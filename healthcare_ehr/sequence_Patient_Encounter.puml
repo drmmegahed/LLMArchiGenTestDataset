@@ -1,0 +1,134 @@
+@startuml SEQ_Patient_Encounter
+title Patient Clinical Encounter - MediCare EHR
+
+actor "Physician" as doctor
+actor "Patient" as patient
+participant "Physician Portal" as portal
+participant "Patient Service" as patsvc
+participant "Encounter Service" as enc
+participant "Vitals Service" as vitals
+participant "Clinical Doc Service" as clinical
+participant "Problem List Service" as problem
+participant "CDSS Engine" as cdss
+participant "Order Service" as order
+participant "Lab Service" as lab
+database "Clinical DB" as db
+entity "Laboratory System" as lis
+
+== Patient Arrival ==
+
+patient -> portal: Check-in at reception
+portal -> enc: checkInPatient(appointmentId)
+enc -> db: UPDATE appointments SET status = CHECKED_IN
+enc --> portal: {checkedIn, room: 101}
+
+== Nurse Vitals ==
+
+portal -> vitals: recordVitals(encounterId, vitalsData)
+
+note right
+Vitals Recorded:
+- BP: 140/90 mmHg
+- Pulse: 78 bpm
+- Temp: 37.2°C
+- SpO2: 98%
+- Weight: 85 kg
+end note
+
+vitals -> db: INSERT vital_signs
+vitals -> cdss: checkVitalsAlerts(vitals)
+
+alt Abnormal Vitals Detected
+    cdss --> vitals: {alert: HIGH_BP}
+    vitals --> portal: Display alert
+end
+
+vitals --> portal: {recorded}
+
+== Physician Encounter ==
+
+doctor -> portal: Open patient chart
+portal -> patsvc: getPatientSummary(patientId)
+patsvc -> db: SELECT demographics, allergies, problems
+db --> patsvc: {patientData}
+patsvc --> portal: {summary, allergies: [Penicillin], activeProblems: [...]}
+portal --> doctor: Display patient chart
+
+doctor -> portal: View recent vitals
+portal -> vitals: getVitals(encounterId)
+vitals --> portal: {vitals with BP alert}
+portal --> doctor: Show vitals (BP highlighted)
+
+== Clinical Documentation ==
+
+doctor -> portal: Start clinical note
+portal -> clinical: createNote(encounterId, type: PROGRESS)
+clinical -> db: INSERT clinical_notes (DRAFT)
+clinical --> portal: {noteId}
+
+doctor -> portal: Document chief complaint
+doctor -> portal: Document history of present illness
+doctor -> portal: Document physical exam findings
+
+portal -> clinical: updateNote(noteId, content)
+clinical -> db: UPDATE clinical_notes
+
+== Assessment & Diagnosis ==
+
+doctor -> portal: Add diagnosis
+portal -> problem: addDiagnosis(patientId, icd10: I10)
+
+note right
+Diagnosis Added:
+- ICD-10: I10
+- Description: Essential Hypertension
+- Status: Active
+- Onset: Today
+end note
+
+problem -> db: INSERT problem_list
+problem -> cdss: evaluateDiagnosis(patientId, diagnosis)
+cdss -> cdss: checkGuidelineRecommendations()
+cdss --> problem: {recommendations: [Order metabolic panel, Consider ACE inhibitor]}
+problem --> portal: {added, recommendations}
+portal --> doctor: Show clinical recommendations
+
+== Lab Order ==
+
+doctor -> portal: Order lab tests
+portal -> order: createLabOrder(encounterId, tests)
+
+note right
+Lab Order:
+- Basic Metabolic Panel
+- Lipid Panel
+- HbA1c
+Priority: Routine
+end note
+
+order -> cdss: validateOrder(order, patientData)
+cdss --> order: {valid, no contraindications}
+
+order -> lab: submitOrder(labOrder)
+lab -> lis: HL7 ORM^O01 (Lab Order)
+lis --> lab: {orderNumber: LAB-2025-001, status: RECEIVED}
+lab --> order: {submitted}
+order -> db: INSERT orders
+
+order --> portal: {orderId, labNumber}
+portal --> doctor: Lab order placed
+
+== Sign & Close Note ==
+
+doctor -> portal: Sign clinical note
+portal -> clinical: signNote(noteId, physicianId)
+clinical -> db: UPDATE clinical_notes SET status = SIGNED
+clinical --> portal: {signed}
+
+portal -> enc: closeEncounter(encounterId)
+enc -> db: UPDATE encounters SET status = COMPLETED
+enc --> portal: {closed}
+
+portal --> doctor: Encounter complete
+
+@enduml

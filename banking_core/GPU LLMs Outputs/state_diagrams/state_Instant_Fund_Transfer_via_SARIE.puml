@@ -1,0 +1,75 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "AML Cleared" as AmlCleared
+state "AML Review Pending" as AmlReviewPending
+state "AML Screening In Progress" as AmlScreeningInProgress
+state "Awaiting Customer Confirmation" as AwaitingCustomerConfirmation
+state "Customer Confirmed" as CustomerConfirmed
+state "Fraud Assessment In Progress" as FraudAssessmentInProgress
+state "GL Posting In Progress" as GlPostingInProgress
+state "Limits Updated" as LimitsUpdated
+state "Notification Sent" as NotificationSent
+state "SARIE Accepted" as SarieAccepted
+state "SARIE Rejected" as SarieRejected
+state "Sent To SARIE" as SentToSarie
+state "Source Account Credited" as SourceAccountCredited
+state "Source Account Debited" as SourceAccountDebited
+state "Transfer Completed" as TransferCompleted
+state "Transfer Failed" as TransferFailed
+state "Transfer Initiated" as TransferInitiated
+state "Transfer Validated" as TransferValidated
+state "Transfer Validation Failed" as TransferValidationFailed
+
+[*] --> TransferInitiated
+
+TransferInitiated --> TransferValidated : Transfer validation requested
+
+TransferValidated --> TransferValidationFailed : Transfer limit exceeded [limit not allowed]
+TransferValidated --> AwaitingCustomerConfirmation : Transfer validated [limit allowed]
+
+AwaitingCustomerConfirmation --> CustomerConfirmed : Customer confirms transfer
+
+CustomerConfirmed --> AmlScreeningInProgress : AML screening started
+
+AmlScreeningInProgress --> AmlReviewPending : AML alert detected [AML alert]
+AmlScreeningInProgress --> AmlCleared : AML cleared [AML cleared]
+
+AmlReviewPending --> [*]
+
+AmlCleared --> FraudAssessmentInProgress : Fraud assessment started
+
+FraudAssessmentInProgress --> SourceAccountDebited : Fraud assessment completed
+
+SourceAccountDebited --> SentToSarie : Source account debited
+
+SentToSarie --> SarieAccepted : SARIE response accepted [SARIE success]
+SentToSarie --> SarieRejected : SARIE response rejected [SARIE failure]
+
+SarieAccepted --> GlPostingInProgress : GL posting started
+
+GlPostingInProgress --> LimitsUpdated : GL posting completed
+
+LimitsUpdated --> NotificationSent : Limits updated
+
+NotificationSent --> TransferCompleted : Transfer confirmation sent
+
+TransferCompleted --> [*]
+
+SarieRejected --> SourceAccountCredited : Debit reversal started
+
+SourceAccountCredited --> TransferFailed : Debit reversal completed
+
+TransferFailed --> [*]
+
+TransferValidationFailed --> [*]
+
+@enduml

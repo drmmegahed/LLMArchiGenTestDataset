@@ -1,0 +1,115 @@
+@startuml SEQ_Bill_Payment
+title Bill Payment via SADAD - FinWallet
+
+actor "Customer" as user
+participant "FinWallet App" as app
+participant "API Gateway" as apigw
+participant "Payment Service" as payment
+participant "Wallet Service" as wallet
+participant "SADAD Adapter" as sadad_adapter
+participant "Notification Service" as notif
+database "Database" as db
+entity "SADAD Network" as sadad
+
+== Bill Inquiry ==
+
+user -> app: Select "Pay Bills"
+user -> app: Choose biller (STC)
+user -> app: Enter account number
+
+app -> apigw: POST /api/v1/bills/inquiry
+apigw -> payment: inquireBill(billerId: STC, accountNo)
+
+payment -> sadad_adapter: billInquiry(billerCode, subscriberNo)
+sadad_adapter -> sadad: SADAD Inquiry Request (XML)
+
+alt Bill Found
+    sadad --> sadad_adapter: Bill Details Response
+    
+    note right
+    Bill Information:
+    - Subscriber: Mohammed Ahmed
+    - Bill Amount: 299.00 SAR
+    - Due Date: 2025-02-28
+    - Bill Number: INV-2025-001234
+    end note
+    
+    sadad_adapter --> payment: {billAmount, dueDate, billNumber}
+    payment --> apigw: {bill details}
+    apigw --> app: Display bill information
+    app --> user: Show bill (299 SAR due Feb 28)
+    
+else Bill Not Found
+    sadad --> sadad_adapter: {error: SUBSCRIBER_NOT_FOUND}
+    sadad_adapter --> payment: {error: BILL_NOT_FOUND}
+    payment --> apigw: {error: NO_BILL_FOUND}
+    apigw --> app: No pending bills
+    app --> user: No bills found for this account
+end
+
+== Payment Confirmation ==
+
+user -> app: Confirm payment
+app -> apigw: POST /api/v1/bills/pay
+apigw -> payment: payBill(userId, billId, amount)
+
+payment -> wallet: checkBalance(userId)
+wallet -> db: SELECT balance FROM wallets
+db --> wallet: {balance: 500}
+
+alt Sufficient Balance
+    wallet --> payment: {balance: 500, sufficient: true}
+    
+    == Execute SADAD Payment ==
+    
+    payment -> sadad_adapter: payBill(billerCode, billNumber, amount)
+    sadad_adapter -> sadad: SADAD Payment Request (XML)
+    
+    alt SADAD Payment Success
+        sadad --> sadad_adapter: Payment Confirmation
+        
+        note right
+        SADAD Response:
+        - Status: SUCCESS
+        - SADAD Ref: 987654321
+        - Payment Date: 2025-02-16
+        end note
+        
+        sadad_adapter --> payment: {success, sadadRef: 987654321}
+        
+        == Debit Wallet ==
+        
+        payment -> wallet: debit(userId, 299)
+        wallet -> db: BEGIN TRANSACTION
+        wallet -> db: UPDATE wallets SET balance = balance - 299
+        wallet -> db: INSERT transactions (BILL_PAYMENT, SADAD)
+        wallet -> db: COMMIT
+        db --> wallet: {newBalance: 201}
+        wallet --> payment: {debited: true, balance: 201}
+        
+        payment -> db: INSERT bill_payments (paid)
+        
+        payment -> notif: sendPaymentReceipt(userId, bill)
+        notif -> user: Push "STC bill paid - 299 SAR"
+        notif -> user: Email receipt
+        
+        payment --> apigw: {status: SUCCESS, sadadRef, newBalance}
+        apigw --> app: Payment successful
+        app --> user: Show receipt\nNew balance: 201 SAR
+        
+    else SADAD Payment Failed
+        sadad --> sadad_adapter: {error: PAYMENT_REJECTED}
+        sadad_adapter --> payment: {error: SADAD_ERROR, reason}
+        payment --> apigw: {error: PAYMENT_FAILED}
+        apigw --> app: Payment failed
+        app --> user: Try again later
+    end
+    
+else Insufficient Balance
+    wallet --> payment: {balance: 50, sufficient: false}
+    payment --> apigw: {error: INSUFFICIENT_BALANCE, required: 299, available: 50}
+    apigw --> app: Insufficient balance
+    app --> user: Top up 249 SAR to pay this bill
+end
+
+@enduml

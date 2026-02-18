@@ -1,0 +1,32 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "At Sorting Facility" as AtSortingFacility
+state "Order Packed" as OrderPacked
+state "Out For Delivery" as OutForDelivery
+state "Shipment In Transit" as ShipmentInTransit
+state "Shipment Registered" as ShipmentRegistered
+
+[*] --> OrderPacked
+
+OrderPacked --> ShipmentRegistered : ShipmentRegistered With Carrier
+
+ShipmentRegistered --> ShipmentInTransit : Tracking Event Received [In Transit To Hub]
+ShipmentRegistered --> OutForDelivery : Tracking Event Received [OutForDelivery]
+ShipmentRegistered --> Delivered : Tracking Event Received [Delivered]
+
+ShipmentInTransit --> AtSortingFacility : Tracking Event Received [AtSortingFacility]
+AtSortingFacility --> OutForDelivery : Tracking Event Received [OutForDelivery]
+OutForDelivery --> Delivered : Tracking Event Received [Delivered]
+
+Delivered --> [*]
+
+@enduml

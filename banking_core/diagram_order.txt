@@ -1,0 +1,4 @@
+components_diagram.puml | CoreBank Core Banking System - Component Diagram
+sequence_Account_Opening.puml | Account Opening Flow
+sequence_SARIE_Transfer.puml | Instant Fund Transfer via SARIE
+sequence_Loan_Disbursement.puml | Personal Loan Disbursement

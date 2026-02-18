@@ -1,0 +1,119 @@
+@startuml SEQ_Usage_Rating
+title Real-Time Usage Rating & Charging - BillTel
+
+participant "Network Element" as network
+participant "CDR Collector" as collector
+participant "CDR Processor" as processor
+participant "Rating Engine" as rating
+participant "Product Catalog" as catalog
+participant "Charging Service" as charging
+participant "Account Service" as account
+participant "Notification Service" as notif
+database "Usage DB" as usagedb
+database "Balance Cache" as cache
+queue "CDR Queue" as kafka
+
+== CDR Collection ==
+
+network -> collector: Send CDR (voice call ended)
+
+note right
+CDR Record:
+- Caller: 966501234567
+- Called: 966559876543
+- Start: 14:30:00
+- Duration: 180 sec
+- Type: MOC (Mobile Originated)
+end note
+
+collector -> collector: parseAndValidate(cdr)
+collector -> kafka: publish(RAW_CDR)
+collector --> network: ACK
+
+== CDR Processing ==
+
+kafka -> processor: consume(RAW_CDR)
+processor -> processor: enrichCDR()
+processor -> processor: detectDuplicates()
+
+processor -> usagedb: INSERT cdr_records
+processor -> kafka: publish(PROCESSED_CDR)
+
+== Usage Rating ==
+
+kafka -> rating: consume(PROCESSED_CDR)
+rating -> account: getSubscription(msisdn)
+account -> cache: GET subscription:966501234567
+cache --> account: {subscriptionId, planId, accountType: POSTPAID}
+account --> rating: {subscription}
+
+rating -> catalog: getPricingPlan(planId)
+catalog --> rating: {plan: "Unlimited 199", rates: [...]}
+
+rating -> rating: applyRating()
+
+note right
+Rating Logic:
+1. Check free minutes: 500 remaining
+2. Duration: 3 min
+3. Free minutes used: 3
+4. Charged amount: 0 SAR
+5. Remaining free: 497 min
+end note
+
+rating -> rating: checkAllowances()
+
+alt Within Free Allowance
+    rating -> account: updateAllowance(subscriptionId, -3min)
+    account -> cache: DECRBY allowance:voice 3
+    cache --> account: {remaining: 497}
+    
+    rating -> usagedb: UPDATE cdr SET rated_amount = 0
+    rating --> kafka: publish(RATED_CDR, amount: 0)
+    
+else Exceeds Allowance
+    rating -> rating: calculateCharge(overage)
+    
+    note right
+    Overage Calculation:
+    - Duration: 3 min
+    - Free remaining: 0
+    - Overage: 3 min
+    - Rate: 0.50 SAR/min
+    - Charge: 1.50 SAR
+    end note
+    
+    rating -> charging: applyCharge(subscriptionId, 1.50)
+    
+    alt Postpaid Account
+        charging -> account: addToUnbilled(subscriptionId, 1.50)
+        account -> cache: INCRBYFLOAT unbilled:SUB001 1.50
+        charging --> rating: {charged}
+        
+    else Prepaid Account
+        charging -> account: checkBalance(subscriptionId)
+        account -> cache: GET balance:SUB001
+        cache --> account: {balance: 25.00}
+        
+        alt Sufficient Balance
+            charging -> account: deductBalance(subscriptionId, 1.50)
+            account -> cache: DECRBY balance:SUB001 1.50
+            cache --> account: {newBalance: 23.50}
+            charging --> rating: {charged, balance: 23.50}
+            
+        else Insufficient Balance
+            charging -> notif: sendLowBalanceAlert(msisdn)
+            notif -> notif: SMS "Balance low: 2.00 SAR"
+            charging --> rating: {charged: partial}
+        end
+    end
+end
+
+== Real-Time Balance Notification ==
+
+opt Balance Below Threshold
+    charging -> notif: checkThresholds(balance)
+    notif -> notif: SMS "Your balance is 23.50 SAR"
+end
+
+@enduml

@@ -1,0 +1,62 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Full Refund Processing" as FullRefundProcessing
+state "Full Refund Processing In Progress" as FullRefundProcessingInProgress
+state "Full Refund Requested" as FullRefundRequested
+state "Full Refund Validation In Progress" as FullRefundValidationInProgress
+state "Merchant Notified" as MerchantNotified
+state "Payment Fully Refunded" as PaymentFullyRefunded
+state "Refund Completed" as RefundCompleted
+state "Refund Failed" as RefundFailed
+state "Refund Pending" as RefundPending
+state "Refund Processing In Progress" as RefundProcessingInProgress
+state "Refund Requested" as RefundRequested
+state "Refund Succeeded" as RefundSucceeded
+state "Settlement Adjustment In Progress" as SettlementAdjustmentInProgress
+state "Validation Failed" as ValidationFailed
+state "Validation In Progress" as ValidationInProgress
+
+[*] --> RefundRequested
+
+RefundRequested --> ValidationInProgress : refund request received
+
+ValidationInProgress --> ValidationFailed : validation failed
+ValidationInProgress --> RefundPending : validation passed
+
+ValidationFailed --> [*]
+
+RefundPending --> RefundProcessingInProgress : refund processing started
+
+RefundProcessingInProgress --> RefundSucceeded : refund approved
+RefundProcessingInProgress --> RefundFailed : refund declined
+
+RefundSucceeded --> SettlementAdjustmentInProgress : settlement adjustment started
+
+SettlementAdjustmentInProgress --> MerchantNotified : settlement adjusted
+
+MerchantNotified --> RefundCompleted : merchant notified of refund success
+
+RefundCompleted --> [*]
+
+RefundFailed --> [*]
+
+state FullRefundProcessing {
+  [*] --> FullRefundRequested
+  FullRefundRequested --> FullRefundValidationInProgress : full refund request received
+  FullRefundValidationInProgress --> FullRefundProcessingInProgress : validation passed
+  FullRefundProcessingInProgress --> PaymentFullyRefunded : full refund approved
+  PaymentFullyRefunded --> [*]
+}
+
+RefundRequested --> FullRefundProcessing : full refund scenario [remaining refundable equals captured amount]
+
+@enduml

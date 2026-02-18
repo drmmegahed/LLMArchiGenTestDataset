@@ -1,0 +1,108 @@
+@startuml C4_PayFlow_Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram - PayFlow Payment Gateway
+
+Container_Boundary(merchant_apps, "Merchant Integration") {
+    Component(sdk, "Payment SDK", "JavaScript/iOS/Android", "Client-side payment collection")
+    Component(hosted, "Hosted Checkout", "React", "PCI-compliant payment page")
+}
+
+Container_Boundary(api_layer, "API Layer") {
+    Component(gateway, "API Gateway", "Kong", "Authentication, rate limiting, routing")
+    Component(payment_api, "Payment API", "Node.js", "RESTful payment endpoints")
+    Component(webhook_svc, "Webhook Service", "Node.js", "Merchant event notifications")
+}
+
+Container_Boundary(core, "Payment Core") {
+    Component(orchestrator, "Payment Orchestrator", "Java", "Payment flow coordination")
+    Component(auth_engine, "Authorization Engine", "Java", "Card authorization processing")
+    Component(tokenizer, "Tokenization Service", "Java/HSM", "PAN tokenization, vault")
+    Component(threeds, "3DS Service", "Java", "3D Secure authentication")
+    Component(fraud_engine, "Fraud Engine", "Python", "ML-based fraud detection")
+    Component(routing, "Smart Routing", "Java", "Acquirer selection optimization")
+}
+
+Container_Boundary(txn_mgmt, "Transaction Management") {
+    Component(refund_svc, "Refund Service", "Java", "Refund processing")
+    Component(void_svc, "Void Service", "Java", "Transaction cancellation")
+    Component(recurring, "Recurring Engine", "Java", "Subscription billing")
+    Component(batch, "Batch Processor", "Java", "Bulk transaction processing")
+}
+
+Container_Boundary(settlement, "Settlement & Finance") {
+    Component(settlement_svc, "Settlement Service", "Java", "Daily settlement calculation")
+    Component(recon, "Reconciliation", "Java", "Bank statement matching")
+    Component(payout, "Payout Service", "Java", "Merchant fund disbursement")
+    Component(fee_calc, "Fee Calculator", "Java", "Transaction fee computation")
+}
+
+Container_Boundary(merchant_portal, "Merchant Portal") {
+    Component(portal_ui, "Portal UI", "React", "Merchant dashboard")
+    Component(reporting, "Reporting Service", "Java", "Analytics and reports")
+    Component(merchant_mgmt, "Merchant Management", "Java", "Merchant configuration")
+}
+
+Container_Boundary(integration, "External Integration") {
+    Component(visa_adapter, "VISA Adapter", "Java", "VISA network integration")
+    Component(mc_adapter, "Mastercard Adapter", "Java", "MC network integration")
+    Component(mada_adapter, "mada Adapter", "Java", "Local debit integration")
+    Component(applepay, "Apple Pay Adapter", "Java", "Wallet integration")
+    Component(kount, "Kount Adapter", "Java", "External fraud service")
+}
+
+Container_Boundary(data, "Data Layer") {
+    ComponentDb(txn_db, "Transaction DB", "PostgreSQL", "Transaction records")
+    ComponentDb(merchant_db, "Merchant DB", "PostgreSQL", "Merchant data")
+    ComponentDb(token_vault, "Token Vault", "Encrypted Store", "Card tokens")
+    ComponentDb(analytics_db, "Analytics DB", "ClickHouse", "Reporting data")
+    ComponentQueue(mq, "Message Queue", "RabbitMQ", "Async processing")
+}
+
+Container_Boundary(external, "External Systems") {
+    System_Ext(visa, "VISA Network", "Card network")
+    System_Ext(mc, "Mastercard", "Card network")
+    System_Ext(mada, "mada Network", "Local debit")
+    System_Ext(threeds_dir, "3DS Directory", "Authentication")
+    System_Ext(bank, "Settlement Bank", "Fund transfer")
+}
+
+' Relationships
+sdk --> gateway
+hosted --> gateway
+gateway --> payment_api
+
+payment_api --> orchestrator
+orchestrator --> auth_engine
+orchestrator --> tokenizer
+orchestrator --> threeds
+orchestrator --> fraud_engine
+orchestrator --> routing
+
+auth_engine --> visa_adapter
+auth_engine --> mc_adapter
+auth_engine --> mada_adapter
+threeds --> threeds_dir
+
+fraud_engine --> kount
+tokenizer --> token_vault
+
+orchestrator --> txn_db
+settlement_svc --> txn_db
+recon --> txn_db
+reporting --> analytics_db
+
+settlement_svc --> payout
+payout --> bank
+
+webhook_svc --> mq
+recurring --> mq
+
+portal_ui --> reporting
+portal_ui --> merchant_mgmt
+
+visa_adapter --> visa
+mc_adapter --> mc
+mada_adapter --> mada
+
+@enduml

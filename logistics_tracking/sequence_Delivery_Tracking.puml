@@ -1,0 +1,85 @@
+@startuml SEQ_Delivery_Tracking
+title Real-Time Delivery Tracking - TrackIt
+
+actor "Customer" as customer
+actor "Driver" as driver
+participant "Driver App" as driverapp
+participant "GPS Collector" as gps
+participant "Tracking Service" as tracking
+participant "Geofence Service" as geofence
+participant "Notification Service" as notif
+participant "Tracking Page" as trackpage
+database "Tracking DB" as db
+queue "Event Stream" as kafka
+
+== Driver Starts Delivery ==
+
+driver -> driverapp: Start delivery route
+driverapp -> tracking: startDelivery(shipmentId, driverId)
+tracking -> db: UPDATE shipments SET status = IN_TRANSIT
+tracking -> kafka: publish(DELIVERY_STARTED)
+tracking -> notif: notifyCustomer(OUT_FOR_DELIVERY)
+notif -> customer: Push "Your package is out for delivery"
+
+== Continuous GPS Tracking ==
+
+loop Every 30 seconds
+    driverapp -> gps: sendLocation(driverId, lat, lng)
+    gps -> tracking: updateLocation(shipmentId, coordinates)
+    tracking -> db: INSERT tracking_events
+    tracking -> tracking: updateETA()
+    tracking -> kafka: publish(LOCATION_UPDATE)
+end
+
+== Customer Tracks Package ==
+
+customer -> trackpage: Open tracking link
+trackpage -> tracking: getTrackingDetails(awb)
+tracking -> db: SELECT * FROM shipments, tracking_events
+tracking --> trackpage: {status, location, eta, history}
+trackpage --> customer: Show live map with driver location
+
+== Geofence Trigger - Approaching ==
+
+tracking -> geofence: checkGeofence(location, destination)
+geofence -> geofence: calculateDistance()
+
+alt Within 2km of destination
+    geofence --> tracking: {trigger: APPROACHING}
+    tracking -> notif: notifyCustomer(ARRIVING_SOON)
+    notif -> customer: Push "Driver is 10 minutes away"
+end
+
+== Arrival & Delivery ==
+
+driver -> driverapp: Arrived at destination
+driverapp -> tracking: updateStatus(ARRIVED)
+tracking -> db: UPDATE shipments SET status = ARRIVED
+tracking -> notif: notifyCustomer(DRIVER_ARRIVED)
+notif -> customer: Push "Driver has arrived"
+
+driver -> driverapp: Capture signature
+driver -> driverapp: Take photo of package
+driverapp -> tracking: completeDelivery(pod)
+
+note right
+Proof of Delivery:
+- Signature: captured
+- Photo: attached
+- Recipient: Mohammed
+- Time: 14:35:22
+- GPS: 24.7136, 46.6753
+end note
+
+tracking -> db: UPDATE shipments SET status = DELIVERED
+tracking -> db: INSERT proof_of_delivery
+tracking -> kafka: publish(DELIVERED)
+
+tracking -> notif: sendDeliveryConfirmation(customer)
+notif -> customer: SMS "Package delivered!"
+notif -> customer: Email with POD
+
+tracking --> driverapp: Delivery complete
+driverapp --> driver: Next delivery
+
+@enduml

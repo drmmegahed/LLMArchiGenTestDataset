@@ -1,0 +1,55 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Bill Information Retrieved" as BillInformationRetrieved
+state "Bill Inquiry Initiated" as BillInquiryInitiated
+state "Checking Balance" as CheckingBalance
+state "Insufficient Balance Detected" as InsufficientBalanceDetected
+state "No Bill Found" as NoBillFound
+state "Payment Completed" as PaymentCompleted
+state "Payment Confirmation Awaited" as PaymentConfirmationAwaited
+state "Payment Failed" as PaymentFailed
+state "Payment Receipt Sent" as PaymentReceiptSent
+state "Payment Successful" as PaymentSuccessful
+state "SADAD Payment In Progress" as SadadPaymentInProgress
+state "Sufficient Balance Detected" as SufficientBalanceDetected
+state "Wallet Debited" as WalletDebited
+
+[*] --> BillInquiryInitiated
+
+BillInquiryInitiated --> BillInformationRetrieved : Bill found
+BillInquiryInitiated --> NoBillFound : Bill not found
+
+BillInformationRetrieved --> PaymentConfirmationAwaited : User confirms payment
+
+PaymentConfirmationAwaited --> CheckingBalance : Payment confirmation received
+
+CheckingBalance --> SufficientBalanceDetected : Balance is sufficient
+CheckingBalance --> InsufficientBalanceDetected : Balance is insufficient
+
+SufficientBalanceDetected --> SadadPaymentInProgress : Proceed to SADAD payment
+
+SadadPaymentInProgress --> PaymentSuccessful : SADAD payment success
+SadadPaymentInProgress --> PaymentFailed : SADAD payment failed
+
+PaymentSuccessful --> WalletDebited : Debit wallet
+WalletDebited --> PaymentReceiptSent : Wallet debited successfully
+PaymentReceiptSent --> PaymentCompleted : Receipt sent
+
+PaymentCompleted --> [*]
+
+PaymentFailed --> [*]
+
+InsufficientBalanceDetected --> [*]
+
+NoBillFound --> [*]
+
+@enduml

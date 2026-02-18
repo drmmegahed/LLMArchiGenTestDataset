@@ -1,0 +1,52 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Aggregating Transactions" as AggregatingTransactions
+state "Fees Calculated" as FeesCalculated
+state "Fees Calculation In Progress" as FeesCalculationInProgress
+state "Payout Failed" as PayoutFailed
+state "Payout Initiated" as PayoutInitiated
+state "Payout Processing" as PayoutProcessing
+state "Pending Payout" as PendingPayout
+state "Reconciliation Completed" as ReconciliationCompleted
+state "Reconciliation Exception Recorded" as ReconciliationExceptionRecorded
+state "Reconciliation In Progress" as ReconciliationInProgress
+state "Reserve Held" as ReserveHeld
+state "Settlement Batch Created" as SettlementBatchCreated
+state "Settlement Report Sent" as SettlementReportSent
+
+[*] --> SettlementBatchCreated
+
+SettlementBatchCreated --> AggregatingTransactions : transactions aggregated
+AggregatingTransactions --> FeesCalculationInProgress : fees calculation started
+FeesCalculationInProgress --> FeesCalculated : fees calculated
+
+FeesCalculated --> ReconciliationInProgress : reconciliation started
+ReconciliationInProgress --> ReconciliationCompleted : reconciliation matched [matched]
+ReconciliationInProgress --> ReconciliationExceptionRecorded : reconciliation discrepancy found [not matched]
+ReconciliationExceptionRecorded --> ReconciliationCompleted : exception recorded
+
+ReconciliationCompleted --> PendingPayout : settlement record created
+
+PendingPayout --> ReserveHeld : reserve required [reserve required]
+PendingPayout --> PayoutInitiated : reserve check passed [reserve check passed]
+
+ReserveHeld --> [*] : process ended with reserve held
+
+PayoutInitiated --> PayoutProcessing : transfer initiated
+PayoutProcessing --> Paid : bank confirms payout [success]
+PayoutProcessing --> PayoutFailed : transfer failed [failure]
+
+PayoutFailed --> [*] : payout failed and merchant notified
+Paid --> SettlementReportSent : settlement report sent to merchant
+SettlementReportSent --> [*]
+
+@enduml

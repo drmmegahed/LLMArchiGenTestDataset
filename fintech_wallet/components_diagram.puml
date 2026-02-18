@@ -1,0 +1,92 @@
+@startuml C4_FinWallet_Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram - FinWallet Digital Wallet Platform
+
+Container_Boundary(mobile, "Mobile Application") {
+    Component(app, "FinWallet App", "Flutter", "Mobile application for iOS and Android")
+}
+
+Container_Boundary(api_gateway, "API Gateway Layer") {
+    Component(apigw, "API Gateway", "Kong", "Rate limiting, authentication, routing")
+    Component(waf, "Web Application Firewall", "AWS WAF", "Security filtering and DDoS protection")
+}
+
+Container_Boundary(core_services, "Core Services") {
+    Component(auth_svc, "Authentication Service", "Spring Boot", "User authentication, session management, 2FA")
+    Component(user_svc, "User Service", "Spring Boot", "User profile management, preferences")
+    Component(wallet_svc, "Wallet Service", "Spring Boot", "Wallet operations, balance management")
+    Component(txn_svc, "Transaction Service", "Spring Boot", "Transaction processing, history")
+    Component(transfer_svc, "Transfer Service", "Spring Boot", "P2P and bank transfers")
+    Component(payment_svc, "Payment Service", "Spring Boot", "Bill payments, merchant payments")
+    Component(card_svc, "Card Service", "Spring Boot", "Virtual/physical card management")
+    Component(notif_svc, "Notification Service", "Spring Boot", "Push notifications, SMS, email")
+}
+
+Container_Boundary(kyc_services, "KYC & Compliance") {
+    Component(kyc_svc, "KYC Service", "Spring Boot", "KYC orchestration and verification")
+    Component(aml_svc, "AML Service", "Spring Boot", "Transaction monitoring, sanctions screening")
+    Component(fraud_svc, "Fraud Detection", "Python/ML", "Real-time fraud scoring")
+}
+
+Container_Boundary(integration_layer, "Integration Layer") {
+    Component(elm_adapter, "Elm Adapter", "Spring Boot", "Yakeen integration for ID verification")
+    Component(sarie_adapter, "SARIE Adapter", "Spring Boot", "SAMA instant payments")
+    Component(sadad_adapter, "SADAD Adapter", "Spring Boot", "Bill payment integration")
+    Component(card_adapter, "Card Network Adapter", "Spring Boot", "VISA/MC/mada processing")
+    Component(swift_adapter, "SWIFT Adapter", "Spring Boot", "International remittances")
+}
+
+Container_Boundary(data_layer, "Data Layer") {
+    ComponentDb(user_db, "User Database", "PostgreSQL", "User profiles, KYC data")
+    ComponentDb(wallet_db, "Wallet Database", "PostgreSQL", "Wallets, balances, transactions")
+    ComponentDb(card_db, "Card Database", "PostgreSQL", "Card details, PCI compliant")
+    ComponentQueue(event_bus, "Event Bus", "Apache Kafka", "Async event processing")
+    ComponentDb(cache, "Cache", "Redis", "Session cache, rate limiting")
+}
+
+Container_Boundary(external, "External Systems") {
+    System_Ext(elm, "Elm Yakeen", "National ID verification")
+    System_Ext(sama, "SAMA SARIE", "Instant payment network")
+    System_Ext(sadad, "SADAD", "Bill payment network")
+    System_Ext(visa, "VISA Network", "Card processing")
+    System_Ext(mc, "Mastercard", "Card processing")
+    System_Ext(worldcheck, "WorldCheck", "Sanctions screening")
+}
+
+' Relationships
+app --> apigw : "HTTPS/REST"
+apigw --> waf
+waf --> auth_svc
+waf --> user_svc
+waf --> wallet_svc
+waf --> txn_svc
+
+auth_svc --> user_db
+user_svc --> user_db
+wallet_svc --> wallet_db
+txn_svc --> wallet_db
+transfer_svc --> wallet_db
+payment_svc --> wallet_db
+card_svc --> card_db
+
+kyc_svc --> elm_adapter
+aml_svc --> worldcheck
+transfer_svc --> sarie_adapter
+payment_svc --> sadad_adapter
+card_svc --> card_adapter
+
+elm_adapter --> elm
+sarie_adapter --> sama
+sadad_adapter --> sadad
+card_adapter --> visa
+card_adapter --> mc
+
+txn_svc --> event_bus
+notif_svc --> event_bus
+fraud_svc --> event_bus
+
+auth_svc --> cache
+wallet_svc --> cache
+
+@enduml

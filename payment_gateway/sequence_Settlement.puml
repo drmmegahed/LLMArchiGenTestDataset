@@ -1,0 +1,139 @@
+@startuml SEQ_Settlement
+title Daily Settlement Process - PayFlow
+
+participant "Scheduler" as scheduler
+participant "Settlement Service" as settlement
+participant "Reconciliation Service" as recon
+participant "Fee Calculator" as fees
+participant "Payout Service" as payout
+participant "Notification Service" as notif
+database "Transaction DB" as db
+database "Settlement DB" as sdb
+entity "Acquiring Bank" as acquirer
+entity "Settlement Bank" as bank
+
+== Daily Settlement Trigger (T+1) ==
+
+scheduler -> settlement: triggerDailySettlement(date: yesterday)
+
+settlement -> db: SELECT merchants WHERE settlement_enabled = true
+db --> settlement: {merchantList: [M001, M002, M003...]}
+
+loop For Each Merchant
+
+    settlement -> settlement: calculateSettlement(merchantId, date)
+    
+    == Aggregate Transactions ==
+    
+    settlement -> db: SELECT SUM(amount) FROM payments\nWHERE merchant = M001\nAND status = CAPTURED\nAND date = yesterday
+    db --> settlement: {grossVolume: 150000}
+    
+    settlement -> db: SELECT SUM(amount) FROM refunds\nWHERE merchant = M001\nAND status = SUCCEEDED\nAND date = yesterday
+    db --> settlement: {refundVolume: 5000}
+    
+    settlement -> db: SELECT COUNT(*) FROM chargebacks\nWHERE merchant = M001\nAND date = yesterday
+    db --> settlement: {chargebackCount: 2, chargebackAmount: 1000}
+    
+    == Calculate Fees ==
+    
+    settlement -> fees: calculateFees(merchantId, transactions)
+    fees -> db: SELECT pricing_plan FROM merchants
+    db --> fees: {plan: BUSINESS, mdr: 2.5%, txnFee: 0.50}
+    
+    fees -> fees: computeFees()
+    
+    note right
+    Fee Calculation:
+    - Gross: 150,000 SAR
+    - Refunds: -5,000 SAR
+    - Chargebacks: -1,000 SAR
+    - Net Volume: 144,000 SAR
+    - MDR (2.5%): 3,600 SAR
+    - Txn Fees (200 x 0.50): 100 SAR
+    - Total Fees: 3,700 SAR
+    - Net Payout: 140,300 SAR
+    end note
+    
+    fees --> settlement: {netPayout: 140300, totalFees: 3700}
+    
+    == Reconciliation Check ==
+    
+    settlement -> recon: reconcileWithAcquirer(merchantId, date)
+    recon -> acquirer: fetchSettlementReport(date)
+    acquirer --> recon: {acquirerReport}
+    
+    recon -> recon: matchTransactions()
+    
+    alt All Transactions Match
+        recon --> settlement: {matched: true, discrepancy: 0}
+        
+    else Discrepancy Found
+        recon --> settlement: {matched: false, discrepancy: 500}
+        recon -> db: INSERT reconciliation_exceptions
+        settlement -> notif: alertOpsTeam(RECON_MISMATCH)
+    end
+    
+    == Create Settlement Record ==
+    
+    settlement -> sdb: INSERT settlement_batches
+    note right
+    Settlement Record:
+    - Merchant: M001
+    - Date: 2025-02-15
+    - Gross: 150,000
+    - Refunds: 5,000
+    - Chargebacks: 1,000
+    - Fees: 3,700
+    - Net: 140,300
+    - Status: PENDING_PAYOUT
+    end note
+    
+    sdb --> settlement: {batchId: BATCH-001}
+
+end
+
+== Execute Payouts ==
+
+settlement -> payout: executePayouts(date)
+
+payout -> sdb: SELECT * FROM settlement_batches\nWHERE status = PENDING_PAYOUT
+sdb --> payout: {batches: [BATCH-001, BATCH-002...]}
+
+loop For Each Settlement Batch
+
+    payout -> db: SELECT bank_account FROM merchants WHERE id = M001
+    db --> payout: {iban: SA1234..., bankCode: RIBL}
+    
+    payout -> payout: checkReserveRequirements()
+    
+    alt Reserve Check Passed
+        
+        payout -> bank: initiateTransfer(iban, amount, reference)
+        
+        alt Transfer Initiated
+            bank --> payout: {transferId: TRF-999, status: PROCESSING}
+            payout -> sdb: UPDATE settlement_batches\nSET status = PAYOUT_INITIATED
+            
+        else Transfer Failed
+            bank --> payout: {error: INVALID_ACCOUNT}
+            payout -> sdb: UPDATE settlement_batches\nSET status = PAYOUT_FAILED
+            payout -> notif: alertMerchant(PAYOUT_FAILED)
+        end
+        
+    else Reserve Required
+        payout -> sdb: UPDATE settlement_batches\nSET status = RESERVE_HELD
+        payout -> notif: notifyMerchant(RESERVE_APPLIED)
+    end
+
+end
+
+== Bank Confirmation (Async) ==
+
+bank -> payout: webhookCallback(transferId, status)
+payout -> sdb: UPDATE settlement_batches\nSET status = PAID
+
+payout -> notif: sendSettlementReport(merchantId)
+notif -> notif: generatePDFReport()
+notif -> notif: emailMerchant()
+
+@enduml

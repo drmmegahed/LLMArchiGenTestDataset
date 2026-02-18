@@ -1,0 +1,73 @@
+@startuml SEQ_Order_Tracking
+title Order Fulfillment and Tracking - ShopEase
+
+actor "Customer" as customer
+participant "Mobile App" as app
+participant "Order Service" as order
+participant "Fulfillment Service" as fulfill
+participant "Shipping Service" as shipping
+participant "Notification Service" as notif
+database "Order DB" as db
+entity "Warehouse" as warehouse
+entity "Carrier (DHL)" as carrier
+
+== Order Fulfillment ==
+
+fulfill -> warehouse: sendFulfillmentRequest(orderId)
+warehouse -> warehouse: pickItems()
+warehouse -> warehouse: packOrder()
+warehouse --> fulfill: {packed, trackingNumber: DHL123456}
+
+fulfill -> db: UPDATE orders SET status = SHIPPED
+fulfill -> shipping: createShipment(orderId, trackingNumber)
+shipping -> carrier: registerShipment(DHL123456)
+carrier --> shipping: {registered, eta: 2025-02-18}
+
+fulfill -> notif: sendShippingNotification(order)
+notif -> customer: SMS "Order shipped! Track: DHL123456"
+notif -> customer: Email with tracking link
+
+== Customer Tracks Order ==
+
+customer -> app: Track order ORD-2025-001
+app -> order: getOrderStatus(orderId)
+order -> db: SELECT * FROM orders
+order -> shipping: getTrackingDetails(trackingNumber)
+shipping -> carrier: fetchTrackingEvents(DHL123456)
+
+carrier --> shipping: {events: [...]}
+
+note right
+Tracking Events:
+1. Feb 16: Picked up from warehouse
+2. Feb 16: In transit to hub
+3. Feb 17: At sorting facility
+4. Feb 17: Out for delivery
+end note
+
+shipping --> order: {tracking details}
+order --> app: {orderStatus, trackingEvents}
+app --> customer: Show tracking timeline
+
+== Delivery Updates (Webhook) ==
+
+carrier -> shipping: webhook(DHL123456, OUT_FOR_DELIVERY)
+shipping -> order: updateStatus(orderId, OUT_FOR_DELIVERY)
+order -> db: INSERT tracking_events
+order -> notif: sendDeliveryUpdate(order)
+notif -> customer: Push "Your order is out for delivery!"
+
+== Delivery Confirmation ==
+
+carrier -> shipping: webhook(DHL123456, DELIVERED)
+shipping -> order: updateStatus(orderId, DELIVERED)
+order -> db: UPDATE orders SET status = DELIVERED
+order -> db: UPDATE orders SET delivered_at = NOW()
+
+order -> notif: sendDeliveryConfirmation(order)
+notif -> customer: SMS "Order delivered!"
+notif -> customer: Email "Rate your experience"
+
+order -> order: scheduleReviewReminder(orderId, 3days)
+
+@enduml

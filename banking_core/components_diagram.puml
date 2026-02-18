@@ -1,0 +1,111 @@
+@startuml C4_CoreBank_Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram - CoreBank Core Banking System
+
+Container_Boundary(channels, "Digital Channels") {
+    Component(mobile, "Mobile Banking", "Flutter", "Customer mobile app")
+    Component(internet, "Internet Banking", "React", "Web banking portal")
+    Component(branch, "Branch System", "Java", "Teller application")
+}
+
+Container_Boundary(api, "API Layer") {
+    Component(apigw, "API Gateway", "Kong", "Security, routing, throttling")
+    Component(openbank, "Open Banking API", "Node.js", "PSD2/SABB compliant APIs")
+}
+
+Container_Boundary(core, "Core Banking Services") {
+    Component(customer_svc, "Customer Service", "Java/Spring", "Customer lifecycle management")
+    Component(account_svc, "Account Service", "Java/Spring", "Account operations, balance")
+    Component(deposit_svc, "Deposit Service", "Java/Spring", "Deposits, withdrawals")
+    Component(transfer_svc, "Transfer Service", "Java/Spring", "Fund transfers")
+    Component(lending_svc, "Lending Service", "Java/Spring", "Loans, EMI, collections")
+    Component(interest_svc, "Interest Engine", "Java/Spring", "Interest calculation")
+    Component(limit_svc, "Limit Service", "Java/Spring", "Transaction limits")
+}
+
+Container_Boundary(payment, "Payment Hub") {
+    Component(sarie_gw, "SARIE Gateway", "Java", "Instant payments")
+    Component(swift_gw, "SWIFT Gateway", "Java", "International transfers")
+    Component(clearing, "Clearing Service", "Java", "Check clearing")
+}
+
+Container_Boundary(support, "Supporting Services") {
+    Component(auth_svc, "Auth Service", "Java", "Authentication, sessions")
+    Component(notif_svc, "Notification", "Java", "SMS, email, push")
+    Component(doc_svc, "Document Service", "Java", "Statements, letters")
+    Component(workflow, "Workflow Engine", "Camunda", "Approval workflows")
+}
+
+Container_Boundary(compliance, "Compliance & Risk") {
+    Component(aml_svc, "AML Service", "Python", "Transaction monitoring")
+    Component(fraud_svc, "Fraud Detection", "Python/ML", "Real-time fraud")
+    Component(audit_svc, "Audit Service", "Java", "Audit logging")
+}
+
+Container_Boundary(finance, "Finance & Accounting") {
+    Component(gl_svc, "GL Service", "Java", "General ledger entries")
+    Component(reconcile, "Reconciliation", "Java", "Account reconciliation")
+    Component(reporting, "Reporting", "Java", "Regulatory reports")
+}
+
+Container_Boundary(data, "Data Layer") {
+    ComponentDb(customer_db, "Customer DB", "PostgreSQL", "Customer master")
+    ComponentDb(account_db, "Account DB", "PostgreSQL", "Accounts, balances")
+    ComponentDb(txn_db, "Transaction DB", "PostgreSQL", "Transaction history")
+    ComponentDb(gl_db, "GL Database", "PostgreSQL", "Accounting entries")
+    ComponentQueue(event_bus, "Event Bus", "Kafka", "Domain events")
+    ComponentDb(cache, "Cache", "Redis", "Session, limits")
+}
+
+Container_Boundary(external, "External Systems") {
+    System_Ext(sama_sarie, "SAMA SARIE", "Instant payment network")
+    System_Ext(swift_net, "SWIFT Network", "International messaging")
+    System_Ext(atm_switch, "ATM Switch", "ATM network")
+    System_Ext(crm, "CRM System", "Customer relationship")
+    System_Ext(card_sys, "Card System", "Card management")
+}
+
+' Channel connections
+mobile --> apigw
+internet --> apigw
+branch --> apigw
+
+' API to services
+apigw --> customer_svc
+apigw --> account_svc
+apigw --> transfer_svc
+openbank --> account_svc
+openbank --> transfer_svc
+
+' Service interactions
+customer_svc --> customer_db
+account_svc --> account_db
+account_svc --> cache
+transfer_svc --> account_svc
+transfer_svc --> limit_svc
+transfer_svc --> sarie_gw
+transfer_svc --> swift_gw
+lending_svc --> account_svc
+interest_svc --> account_db
+
+' Payment hub
+sarie_gw --> sama_sarie
+swift_gw --> swift_net
+
+' Compliance
+transfer_svc --> aml_svc
+transfer_svc --> fraud_svc
+aml_svc --> event_bus
+audit_svc --> event_bus
+
+' Finance
+account_svc --> gl_svc
+transfer_svc --> gl_svc
+gl_svc --> gl_db
+
+' Notifications
+transfer_svc --> notif_svc
+lending_svc --> notif_svc
+
+@enduml

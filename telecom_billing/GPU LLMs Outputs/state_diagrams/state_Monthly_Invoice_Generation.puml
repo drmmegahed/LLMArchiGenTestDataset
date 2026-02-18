@@ -1,0 +1,48 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Account List Retrieved" as AccountListRetrieved
+state "All Accounts Processed" as AllAccountsProcessed
+state "Billing Cycle Triggered" as BillingCycleTriggered
+state "Billing Run Completed" as BillingRunCompleted
+state "Discounts Applied" as DiscountsApplied
+state "Invoice Created" as InvoiceCreated
+state "Invoice Generation For Account" as InvoiceGenerationForAccount
+state "Invoice PDF Generated" as InvoicePdfGenerated
+state "Invoice Sent" as InvoiceSent
+state "Recurring Charges Calculated" as RecurringChargesCalculated
+state "Taxes Calculated" as TaxesCalculated
+state "Usage Charges Aggregated" as UsageChargesAggregated
+
+[*] --> BillingCycleTriggered
+
+BillingCycleTriggered --> AccountListRetrieved : Accounts Retrieved
+
+state InvoiceGenerationForAccount {
+  [*] --> UsageChargesAggregated
+  UsageChargesAggregated --> RecurringChargesCalculated : Recurring Charges Retrieved
+  RecurringChargesCalculated --> DiscountsApplied : DiscountsApplied
+  DiscountsApplied --> TaxesCalculated : TaxesCalculated
+  TaxesCalculated --> InvoiceCreated : InvoiceCreated
+  InvoiceCreated --> InvoicePdfGenerated : InvoicePdfGenerated
+  InvoicePdfGenerated --> InvoiceSent : InvoiceSent
+  InvoiceSent --> [*]
+}
+
+AccountListRetrieved --> InvoiceGenerationForAccount : For Each Account
+
+InvoiceGenerationForAccount --> AllAccountsProcessed : All Accounts Completed
+
+AllAccountsProcessed --> BillingRunCompleted : BillingRunCompleted
+
+BillingRunCompleted --> [*]
+
+@enduml

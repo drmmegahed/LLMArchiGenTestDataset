@@ -1,0 +1,108 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Account Created" as AccountCreated
+state "Account Creation In Progress" as AccountCreationInProgress
+state "Account Creation Phase" as AccountCreationPhase
+state "Account Details Entry In Progress" as AccountDetailsEntryInProgress
+state "Account Opened Successfully" as AccountOpenedSuccessfully
+state "Account Opening Requested" as AccountOpeningRequested
+state "Account Record Created" as AccountRecordCreated
+state "Approval Granted" as ApprovalGranted
+state "Approval Pending" as ApprovalPending
+state "Approval Workflow Needed" as ApprovalWorkflowNeeded
+state "Approval Workflow Phase" as ApprovalWorkflowPhase
+state "Checking Existing Customer" as CheckingExistingCustomer
+state "Customer Identification In Progress" as CustomerIdentificationInProgress
+state "Customer Identification Phase" as CustomerIdentificationPhase
+state "Customer Identified" as CustomerIdentified
+state "Document Generation In Progress" as DocumentGenerationInProgress
+state "Document Generation Phase" as DocumentGenerationPhase
+state "Documents Generated" as DocumentsGenerated
+state "Documents Ready" as DocumentsReady
+state "Existing Customer Found" as ExistingCustomerFound
+state "Generating Account Number" as GeneratingAccountNumber
+state "Generating Documents" as GeneratingDocuments
+state "Initial Deposit Completed" as InitialDepositCompleted
+state "Initial Deposit Phase" as InitialDepositPhase
+state "Initial Deposit Processed" as InitialDepositProcessed
+state "Initial Deposit Processing In Progress" as InitialDepositProcessingInProgress
+state "New Customer Created" as NewCustomerCreated
+state "New Customer Creation In Progress" as NewCustomerCreationInProgress
+state "Notifications In Progress" as NotificationsInProgress
+state "Processing Initial Deposit" as ProcessingInitialDeposit
+state "Validating Account Request" as ValidatingAccountRequest
+
+[*] --> AccountOpeningRequested
+
+AccountOpeningRequested --> CustomerIdentificationInProgress : request to open account
+
+state CustomerIdentificationPhase {
+  [*] --> CheckingExistingCustomer
+  CheckingExistingCustomer --> ExistingCustomerFound : customer found [customer exists]
+  CheckingExistingCustomer --> NewCustomerCreationInProgress : customer not found [customer does not exist]
+  NewCustomerCreationInProgress --> NewCustomerCreated : customer created
+}
+
+AccountOpeningRequested --> CustomerIdentificationPhase : begin identification
+
+CustomerIdentificationPhase --> CustomerIdentified : ExistingCustomerFound
+CustomerIdentificationPhase --> CustomerIdentified : NewCustomerCreated
+
+CustomerIdentified --> AccountDetailsEntryInProgress : enter account details
+
+AccountDetailsEntryInProgress --> AccountCreationInProgress : submit account details
+
+state AccountCreationPhase {
+  [*] --> ValidatingAccountRequest
+  ValidatingAccountRequest --> GeneratingAccountNumber : validation successful
+  GeneratingAccountNumber --> AccountRecordCreated : account number generated
+}
+
+AccountCreationInProgress --> AccountCreationPhase : begin account creation
+AccountCreationPhase --> AccountCreated : AccountRecordCreated
+
+AccountCreated --> InitialDepositProcessingInProgress : process initial deposit
+
+state InitialDepositPhase {
+  [*] --> ProcessingInitialDeposit
+  ProcessingInitialDeposit --> InitialDepositCompleted : deposit processed
+}
+
+InitialDepositProcessingInProgress --> InitialDepositPhase : begin deposit processing
+InitialDepositPhase --> InitialDepositProcessed : InitialDepositCompleted
+
+InitialDepositProcessed --> DocumentGenerationInProgress : generate account documents
+
+state DocumentGenerationPhase {
+  [*] --> GeneratingDocuments
+  GeneratingDocuments --> DocumentsGenerated : documents created
+}
+
+DocumentGenerationInProgress --> DocumentGenerationPhase : begin document generation
+DocumentGenerationPhase --> DocumentsReady : DocumentsGenerated
+
+DocumentsReady --> ApprovalWorkflowNeeded : initial deposit > 50000 [initial deposit > 50000]
+DocumentsReady --> NotificationsInProgress : initial deposit ≤ 50000 [initial deposit ≤ 50000]
+
+state ApprovalWorkflowPhase {
+  [*] --> ApprovalPending
+  ApprovalPending --> ApprovalGranted : approved
+}
+
+ApprovalWorkflowNeeded --> ApprovalWorkflowPhase : initiate approval
+ApprovalWorkflowPhase --> NotificationsInProgress : ApprovalGranted
+
+NotificationsInProgress --> AccountOpenedSuccessfully : send notifications
+
+AccountOpenedSuccessfully --> [*]
+
+@enduml

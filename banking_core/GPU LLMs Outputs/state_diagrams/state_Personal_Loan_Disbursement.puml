@@ -1,0 +1,72 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Application Approved" as ApplicationApproved
+state "Application Rejected" as ApplicationRejected
+state "Application Under Review" as ApplicationUnderReview
+state "Awaiting Customer Acceptance" as AwaitingCustomerAcceptance
+state "Credit Assessment In Progress" as CreditAssessmentInProgress
+state "Disbursement Completed" as DisbursementCompleted
+state "Disbursement In Progress" as DisbursementInProgress
+state "Documentation Completed" as DocumentationCompleted
+state "Documentation In Progress" as DocumentationInProgress
+state "EMI Calculation In Progress" as EmiCalculationInProgress
+state "Eligibility Check In Progress" as EligibilityCheckInProgress
+state "Eligible For Loan" as EligibleForLoan
+state "GL Posting Completed" as GlPostingCompleted
+state "GL Posting In Progress" as GlPostingInProgress
+state "Loan Accepted" as LoanAccepted
+state "Loan Account Creation In Progress" as LoanAccountCreationInProgress
+state "Loan Application Received" as LoanApplicationReceived
+state "Loan Disbursed" as LoanDisbursed
+state "Loan Offer Presented" as LoanOfferPresented
+state "Notifications In Progress" as NotificationsInProgress
+state "Repayment Schedule Generation In Progress" as RepaymentScheduleGenerationInProgress
+
+[*] --> LoanApplicationReceived
+
+LoanApplicationReceived --> EligibilityCheckInProgress : Application submitted
+EligibilityCheckInProgress --> EligibleForLoan : Eligibility check completed [eligible]
+EligibilityCheckInProgress --> ApplicationRejected : Eligibility check completed [not eligible]
+
+EligibleForLoan --> EmiCalculationInProgress : Eligibility confirmed
+EmiCalculationInProgress --> ApplicationUnderReview : EMI calculation completed
+
+ApplicationUnderReview --> CreditAssessmentInProgress : Application assigned for assessment
+CreditAssessmentInProgress --> ApplicationApproved : Application approved [approved]
+CreditAssessmentInProgress --> ApplicationRejected : Application rejected [rejected]
+
+ApplicationApproved --> LoanOfferPresented : Approval notification sent
+LoanOfferPresented --> AwaitingCustomerAcceptance : Loan offer displayed
+
+AwaitingCustomerAcceptance --> LoanAccepted : Customer accepts terms
+AwaitingCustomerAcceptance --> ApplicationRejected : Customer rejects terms
+
+LoanAccepted --> LoanAccountCreationInProgress : Terms accepted
+LoanAccountCreationInProgress --> RepaymentScheduleGenerationInProgress : Loan account created
+RepaymentScheduleGenerationInProgress --> DisbursementInProgress : Repayment schedule generated
+
+DisbursementInProgress --> DisbursementCompleted : Disbursement credited
+
+DisbursementCompleted --> GlPostingInProgress : Disbursement done
+GlPostingInProgress --> GlPostingCompleted : GL entries posted
+
+GlPostingCompleted --> DocumentationInProgress : GL posting done
+DocumentationInProgress --> DocumentationCompleted : Documents generated
+
+DocumentationCompleted --> NotificationsInProgress : Documentation done
+NotificationsInProgress --> LoanDisbursed : Notifications sent
+
+LoanDisbursed --> [*]
+
+ApplicationRejected --> [*]
+
+@enduml

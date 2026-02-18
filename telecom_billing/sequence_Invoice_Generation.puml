@@ -1,0 +1,110 @@
+@startuml SEQ_Invoice_Generation
+title Monthly Invoice Generation - BillTel
+
+participant "Scheduler" as scheduler
+participant "Billing Service" as billing
+participant "Account Service" as account
+participant "Rating Engine" as rating
+participant "Tax Adapter" as tax
+participant "Document Service" as doc
+participant "Notification Service" as notif
+database "Billing DB" as billdb
+database "Usage DB" as usagedb
+entity "Tax System" as taxsys
+
+== Billing Cycle Trigger ==
+
+scheduler -> billing: triggerBillingRun(cycleId: FEB-2025)
+
+billing -> account: getAccountsForCycle(cycleId)
+account -> billdb: SELECT accounts WHERE billing_cycle = ?
+billdb --> account: {accounts: [ACC-001, ACC-002, ...]}
+account --> billing: {accountList}
+
+loop For Each Account
+
+    billing -> billing: generateInvoice(accountId)
+    
+    == Aggregate Usage Charges ==
+    
+    billing -> rating: getUnbilledUsage(accountId, period)
+    rating -> usagedb: SELECT SUM(rated_amount) FROM cdrs\nWHERE account = ? AND billed = false
+    usagedb --> rating: {voiceCharges: 45.50, dataCharges: 0, smsCharges: 2.00}
+    rating --> billing: {usageCharges: 47.50}
+    
+    == Get Recurring Charges ==
+    
+    billing -> account: getSubscriptions(accountId)
+    account --> billing: {subscriptions: [{plan: "Unlimited 199", mrc: 199}]}
+    
+    billing -> billing: calculateRecurring()
+    
+    note right
+    Recurring Charges:
+    - Plan Fee: 199.00 SAR
+    - Add-ons: 0.00 SAR
+    - Total MRC: 199.00 SAR
+    end note
+    
+    == Apply Discounts ==
+    
+    billing -> billing: applyDiscounts(accountId)
+    
+    note right
+    Discounts:
+    - Loyalty (10%): -19.90 SAR
+    - Promo code: 0.00 SAR
+    end note
+    
+    == Calculate Taxes ==
+    
+    billing -> tax: calculateTax(charges, region)
+    tax -> taxsys: getTaxRates(SA)
+    taxsys --> tax: {vat: 15%}
+    tax -> tax: computeTax()
+    
+    note right
+    Tax Calculation:
+    - Subtotal: 226.60 SAR
+    - VAT (15%): 33.99 SAR
+    - Total: 260.59 SAR
+    end note
+    
+    tax --> billing: {taxAmount: 33.99, total: 260.59}
+    
+    == Create Invoice ==
+    
+    billing -> billdb: INSERT invoices
+    billing -> billdb: INSERT invoice_line_items
+    billdb --> billing: {invoiceId: INV-2025-001234}
+    
+    billing -> usagedb: UPDATE cdrs SET billed = true WHERE account = ?
+    
+    == Generate PDF ==
+    
+    billing -> doc: generateInvoicePDF(invoiceId)
+    doc -> doc: renderTemplate()
+    doc -> doc: addItemizedDetails()
+    doc --> billing: {pdfUrl}
+    
+    billing -> billdb: UPDATE invoices SET pdf_url = ?
+    
+    == Send Invoice ==
+    
+    billing -> notif: sendInvoice(accountId, invoiceId)
+    notif -> notif: Email invoice PDF
+    notif -> notif: SMS "Your bill is ready: 260.59 SAR"
+
+end
+
+billing -> scheduler: billingRunComplete(cycleId, stats)
+
+note right
+Billing Run Stats:
+- Accounts processed: 50,000
+- Invoices generated: 48,500
+- Total revenue: 12.5M SAR
+- Errors: 15 (retry queue)
+end note
+
+@enduml

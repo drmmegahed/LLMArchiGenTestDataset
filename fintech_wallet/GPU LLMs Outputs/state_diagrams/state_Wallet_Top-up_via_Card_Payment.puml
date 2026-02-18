@@ -1,0 +1,50 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "3DS Authentication In Progress" as 3dsAuthenticationInProgress
+state "3DS Authentication Required" as 3dsAuthenticationRequired
+state "Amount Validation In Progress" as AmountValidationInProgress
+state "Awaiting Card Selection" as AwaitingCardSelection
+state "Card Payment Processing In Progress" as CardPaymentProcessingInProgress
+state "Crediting Wallet In Progress" as CreditingWalletInProgress
+state "Payment Capture In Progress" as PaymentCaptureInProgress
+state "Top-up Failed" as TopupFailed
+state "Top-up Initiated" as TopupInitiated
+state "Top-up Rejected" as TopupRejected
+state "Top-up Successful" as TopupSuccessful
+
+[*] --> TopupInitiated
+
+TopupInitiated --> AmountValidationInProgress : Top-up Requested
+
+AmountValidationInProgress --> AwaitingCardSelection : Amount Validated [within limits]
+AmountValidationInProgress --> TopupRejected : Amount Validation Failed [exceeds daily limit]
+
+TopupRejected --> [*]
+
+AwaitingCardSelection --> CardPaymentProcessingInProgress : Card Selected
+
+CardPaymentProcessingInProgress --> 3dsAuthenticationRequired : 3DS Required
+
+3dsAuthenticationRequired --> 3dsAuthenticationInProgress : 3DS Redirected
+
+3dsAuthenticationInProgress --> PaymentCaptureInProgress : 3DS Authentication Successful
+3dsAuthenticationInProgress --> TopupFailed : 3DS Authentication Failed
+
+PaymentCaptureInProgress --> CreditingWalletInProgress : Payment Captured Successfully
+
+CreditingWalletInProgress --> TopupSuccessful : Wallet Credited
+
+TopupSuccessful --> [*]
+
+TopupFailed --> [*]
+
+@enduml

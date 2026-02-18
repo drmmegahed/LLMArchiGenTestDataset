@@ -1,0 +1,36 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Approaching Destination" as ApproachingDestination
+state "Arrived At Destination" as ArrivedAtDestination
+state "Delivery Not Started" as DeliveryNotStarted
+state "In Transit" as InTransit
+state "Out For Delivery" as OutForDelivery
+state "Proof Of Delivery In Progress" as ProofOfDeliveryInProgress
+
+[*] --> DeliveryNotStarted
+
+DeliveryNotStarted --> OutForDelivery : Delivery Start Requested
+
+OutForDelivery --> InTransit : Location Update Received
+
+InTransit --> ApproachingDestination : ApproachingDestination Detected [Within 2km of destination]
+InTransit --> ArrivedAtDestination : Arrival Reported
+
+ApproachingDestination --> ArrivedAtDestination : Arrival Reported
+
+ArrivedAtDestination --> ProofOfDeliveryInProgress : Proof Of Delivery Actions Initiated
+
+ProofOfDeliveryInProgress --> Delivered : Proof Of Delivery Completed
+
+Delivered --> [*]
+
+@enduml

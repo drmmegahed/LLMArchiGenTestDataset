@@ -1,0 +1,143 @@
+@startuml SEQ_Claim_Settlement
+title Claim Adjudication and Settlement - ClaimsPro
+
+actor "Adjuster" as adjuster
+actor "Policyholder" as customer
+participant "Adjuster Portal" as portal
+participant "Claim Service" as claim
+participant "Adjudication Engine" as adjud
+participant "Cost Estimator" as estimator
+participant "Settlement Service" as settle
+participant "Payment Adapter" as payment
+participant "Document Service" as doc
+participant "Notification Service" as notif
+database "Claims DB" as db
+entity "Bank" as bank
+entity "Repair Shop" as garage
+
+== Adjuster Review ==
+
+adjuster -> portal: Open claim CLM-2025-001
+portal -> claim: getClaimDetails(claimId)
+claim -> db: SELECT * FROM claims
+db --> claim: {claim details, photos, AI assessment}
+claim --> portal: {claimData}
+portal --> adjuster: Display claim
+
+adjuster -> portal: Review damage photos
+adjuster -> portal: Compare AI estimate
+
+== Request Additional Estimate ==
+
+adjuster -> portal: Request garage estimate
+portal -> claim: requestEstimate(claimId, garageId)
+claim -> garage: createEstimateRequest()
+garage --> claim: {estimateId, ETA: 24hrs}
+
+... 24 hours later ...
+
+garage -> claim: submitEstimate(estimateId)
+note right
+Garage Estimate:
+- Labor: 3,500 SAR
+- Parts: 5,200 SAR
+- Paint: 1,800 SAR
+- Total: 10,500 SAR
+end note
+
+claim -> db: UPDATE claim_estimates
+claim -> notif: notifyAdjuster(estimateReceived)
+notif -> adjuster: Push notification
+
+== Adjudication ==
+
+adjuster -> portal: Proceed to adjudicate
+portal -> adjud: adjudicateClaim(claimId)
+
+adjud -> db: SELECT policy_terms, claim_data
+adjud -> adjud: applyRules()
+
+note right
+Rules Applied:
+1. Coverage: Comprehensive ✓
+2. Deductible: 500 SAR
+3. Depreciation: 10% on parts
+4. Coverage Limit: 100,000 SAR
+5. Sub-limits: None breached
+end note
+
+adjud -> adjud: calculateSettlement()
+
+note right
+Settlement Calculation:
+- Garage Estimate: 10,500
+- Less Depreciation: -520
+- Sub-total: 9,980
+- Less Deductible: -500
+- Settlement Amount: 9,480 SAR
+end note
+
+adjud --> portal: {settlementAmount: 9480, breakdown}
+portal --> adjuster: Review settlement
+
+adjuster -> portal: Approve settlement
+
+== Generate Settlement Offer ==
+
+portal -> claim: approveSettlement(claimId, 9480)
+claim -> db: UPDATE claims SET status = APPROVED
+
+claim -> doc: generateSettlementLetter(claim)
+doc -> doc: createPDF()
+doc --> claim: {documentUrl}
+
+claim -> notif: sendSettlementOffer(customerId, amount)
+notif -> customer: SMS "Settlement offer: 9,480 SAR"
+notif -> customer: Email with settlement letter
+
+== Customer Acceptance ==
+
+customer -> app: View settlement offer
+customer -> app: Accept settlement
+app -> claim: acceptSettlement(claimId)
+claim -> db: UPDATE claims SET status = SETTLEMENT_ACCEPTED
+
+== Payment Processing ==
+
+claim -> settle: initiateSettlement(claimId)
+settle -> db: SELECT payment_preference
+
+alt Direct to Garage
+    settle -> payment: payGarage(garageId, 9480)
+    payment -> bank: initiateTransfer(garageIBAN)
+    bank --> payment: {transferId, status: PROCESSING}
+    payment --> settle: {paymentInitiated}
+    
+    settle -> garage: notifyPayment(9480)
+    settle -> notif: notifyCustomer(GARAGE_PAYMENT)
+    notif -> customer: "Payment sent to repair shop"
+    
+else Direct to Customer
+    settle -> payment: payCustomer(customerId, 9480)
+    payment -> bank: initiateTransfer(customerIBAN)
+    bank --> payment: {transferId, status: PROCESSING}
+    payment --> settle: {paymentInitiated}
+    
+    settle -> notif: notifyCustomer(DIRECT_PAYMENT)
+    notif -> customer: "9,480 SAR transferred to your account"
+end
+
+== Close Claim ==
+
+... Bank confirmation received ...
+
+bank -> payment: webhookCallback(SUCCESS)
+payment -> settle: paymentConfirmed(claimId)
+settle -> claim: closeClam(claimId)
+claim -> db: UPDATE claims SET status = CLOSED
+
+claim -> doc: generateClosureLetter(claimId)
+claim -> notif: sendClaimClosed(customerId)
+notif -> customer: "Claim CLM-2025-001 closed"
+
+@enduml

@@ -1,0 +1,3 @@
+components_diagram.puml | ClaimsPro Insurance Claims Platform - Component Diagram
+sequence_Claim_Submission.puml | Motor Insurance Claim Submission
+sequence_Claim_Settlement.puml | Claim Adjudication and Settlement

@@ -1,0 +1,135 @@
+@startuml SEQ_Account_Opening
+title Account Opening Flow - CoreBank
+
+actor "Customer" as customer
+actor "Branch Officer" as officer
+participant "Branch System" as branch
+participant "API Gateway" as apigw
+participant "Customer Service" as custsvc
+participant "Account Service" as acctsvc
+participant "Workflow Engine" as workflow
+participant "Document Service" as docsvc
+participant "Notification Service" as notif
+participant "GL Service" as gl
+database "Customer DB" as custdb
+database "Account DB" as acctdb
+
+== Customer Identification ==
+
+customer -> officer: Request to open account
+officer -> branch: Search customer by ID
+
+branch -> apigw: GET /api/v1/customers/search?nationalId=xxx
+apigw -> custsvc: searchCustomer(nationalId)
+custsvc -> custdb: SELECT * FROM customers WHERE national_id = xxx
+
+alt Existing Customer
+    custdb --> custsvc: {customerId: C001, name, ...}
+    custsvc --> apigw: {customer details}
+    apigw --> branch: Customer found
+    branch --> officer: Display customer profile
+    
+else New Customer
+    custdb --> custsvc: {empty}
+    custsvc --> apigw: {notFound}
+    apigw --> branch: Customer not found
+    
+    == Create New Customer ==
+    
+    officer -> branch: Enter customer details
+    customer -> officer: Provide documents (ID, address proof)
+    
+    branch -> apigw: POST /api/v1/customers
+    apigw -> custsvc: createCustomer(customerData)
+    
+    custsvc -> custsvc: validateKYC()
+    custsvc -> custdb: INSERT INTO customers
+    custdb --> custsvc: {customerId: C002}
+    
+    custsvc --> apigw: {customerId: C002}
+    apigw --> branch: Customer created
+end
+
+== Account Creation ==
+
+officer -> branch: Select account type (Savings)
+officer -> branch: Enter initial deposit (5000 SAR)
+
+branch -> apigw: POST /api/v1/accounts
+note right
+Request:
+{
+  "customerId": "C001",
+  "accountType": "SAVINGS",
+  "currency": "SAR",
+  "initialDeposit": 5000,
+  "branchCode": "001"
+}
+end note
+
+apigw -> acctsvc: createAccount(accountRequest)
+
+acctsvc -> acctsvc: validateRequest()
+acctsvc -> acctsvc: generateAccountNumber()
+
+note right
+Account Number Generation:
+- Bank Code: 001
+- Branch: 001
+- Serial: 0012345
+- Check digit
+Result: SA0100100123458
+end note
+
+acctsvc -> acctdb: INSERT INTO accounts
+acctdb --> acctsvc: {accountId: ACC-001}
+
+== Initial Deposit Processing ==
+
+acctsvc -> acctsvc: processInitialDeposit(5000)
+acctsvc -> acctdb: UPDATE accounts SET balance = 5000
+acctsvc -> acctdb: INSERT INTO transactions (CREDIT, CASH_DEPOSIT)
+
+acctsvc -> gl: postEntry(accountId, amount, type)
+gl -> gl: createJournalEntry()
+
+note right
+GL Entries:
+DR: Cash at Branch    5000
+CR: Customer Deposits 5000
+end note
+
+gl --> acctsvc: {journalId: JE-001}
+
+== Document Generation ==
+
+acctsvc -> docsvc: generateAccountKit(accountId)
+docsvc -> docsvc: createWelcomeLetter()
+docsvc -> docsvc: createTermsDocument()
+docsvc -> docsvc: generateAccountCard()
+docsvc --> acctsvc: {documents: [...]}
+
+== Approval Workflow (for large deposits) ==
+
+opt Initial Deposit > 50000
+    acctsvc -> workflow: initiateApproval(accountId, amount)
+    workflow -> workflow: assignToSupervisor()
+    workflow --> acctsvc: {workflowId, status: PENDING}
+    
+    workflow -> officer: Approval notification
+    officer -> workflow: Approve
+    workflow -> acctsvc: approvalCallback(approved)
+end
+
+== Notifications ==
+
+acctsvc -> notif: sendAccountOpened(customerId, accountId)
+notif -> customer: SMS "Account SA01001... opened"
+notif -> customer: Email with account details
+
+acctsvc --> apigw: {accountNumber, status: ACTIVE}
+apigw --> branch: Account opened successfully
+branch --> officer: Display account details
+officer -> customer: Provide account kit
+
+@enduml

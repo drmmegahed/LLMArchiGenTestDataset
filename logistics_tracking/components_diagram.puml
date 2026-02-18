@@ -1,0 +1,67 @@
+@startuml C4_TrackIt_Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram - TrackIt Logistics Platform
+
+Container_Boundary(apps, "Applications") {
+    Component(shipper_portal, "Shipper Portal", "React", "Create shipments")
+    Component(driver_app, "Driver App", "React Native", "Delivery management")
+    Component(tracking_page, "Tracking Page", "React", "Public tracking")
+}
+
+Container_Boundary(core, "Core Services") {
+    Component(shipment_svc, "Shipment Service", "Java", "Shipment lifecycle")
+    Component(tracking_svc, "Tracking Service", "Java", "Location tracking")
+    Component(routing_svc, "Routing Service", "Python", "Route optimization")
+    Component(rate_svc, "Rate Service", "Java", "Pricing calculation")
+    Component(driver_svc, "Driver Service", "Java", "Driver management")
+    Component(notif_svc, "Notification Service", "Java", "Alerts & updates")
+}
+
+Container_Boundary(iot, "IoT Layer") {
+    Component(gps_collector, "GPS Collector", "Go", "Device data ingestion")
+    Component(geofence_svc, "Geofence Service", "Java", "Location triggers")
+}
+
+Container_Boundary(integration, "Integration") {
+    Component(maps_adapter, "Maps Adapter", "Java", "Google Maps integration")
+    Component(wms_adapter, "WMS Adapter", "Java", "Warehouse integration")
+}
+
+Container_Boundary(data, "Data Layer") {
+    ComponentDb(shipment_db, "Shipment DB", "PostgreSQL", "Shipments")
+    ComponentDb(tracking_db, "Tracking DB", "TimescaleDB", "Location history")
+    ComponentDb(cache, "Cache", "Redis", "Active shipments")
+    ComponentQueue(events, "Event Stream", "Kafka", "Tracking events")
+}
+
+Container_Boundary(external, "External") {
+    System_Ext(google_maps, "Google Maps", "Routing")
+    System_Ext(wms, "Warehouse System", "Dispatch")
+    System_Ext(iot_devices, "GPS Devices", "Location")
+}
+
+shipper_portal --> shipment_svc
+driver_app --> driver_svc
+driver_app --> tracking_svc
+tracking_page --> tracking_svc
+
+shipment_svc --> rate_svc
+shipment_svc --> routing_svc
+routing_svc --> maps_adapter
+maps_adapter --> google_maps
+
+gps_collector --> iot_devices
+gps_collector --> tracking_svc
+tracking_svc --> geofence_svc
+geofence_svc --> notif_svc
+
+shipment_svc --> shipment_db
+tracking_svc --> tracking_db
+tracking_svc --> cache
+tracking_svc --> events
+
+shipment_svc --> wms_adapter
+wms_adapter --> wms
+
+@enduml

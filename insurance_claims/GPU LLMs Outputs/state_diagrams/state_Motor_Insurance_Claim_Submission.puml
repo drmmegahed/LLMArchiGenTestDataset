@@ -1,0 +1,50 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "AI Damage Assessment In Progress" as AiDamageAssessmentInProgress
+state "Claim Creation In Progress" as ClaimCreationInProgress
+state "Claim Initiation In Progress" as ClaimInitiationInProgress
+state "Claim Submitted" as ClaimSubmitted
+state "Claim Under Review For Fraud" as ClaimUnderReviewForFraud
+state "Fraud Screening In Progress" as FraudScreeningInProgress
+state "Incident Details Being Captured" as IncidentDetailsBeingCaptured
+state "Notification In Progress" as NotificationInProgress
+state "Policy Not Active Or Not Covered" as PolicyNotActiveOrNotCovered
+state "Policy Validation In Progress" as PolicyValidationInProgress
+state "Workflow Routing In Progress" as WorkflowRoutingInProgress
+
+[*] --> ClaimInitiationInProgress
+
+ClaimInitiationInProgress --> IncidentDetailsBeingCaptured : Incident Details Provided
+
+IncidentDetailsBeingCaptured --> PolicyValidationInProgress : Incident Details Submitted
+
+PolicyValidationInProgress --> PolicyNotActiveOrNotCovered : Policy Validation Failed [Policy not active or not covered]
+PolicyNotActiveOrNotCovered --> [*]
+
+PolicyValidationInProgress --> AiDamageAssessmentInProgress : Policy Validation Passed [Policy active and covered]
+
+AiDamageAssessmentInProgress --> FraudScreeningInProgress : AI Damage Assessment Completed
+
+FraudScreeningInProgress --> ClaimUnderReviewForFraud : Fraud Risk Identified As High [Fraud score > 70]
+ClaimUnderReviewForFraud --> [*]
+
+FraudScreeningInProgress --> ClaimCreationInProgress : Fraud Risk Not High [Fraud score ≤ 70]
+
+ClaimCreationInProgress --> WorkflowRoutingInProgress : Claim Created
+
+WorkflowRoutingInProgress --> NotificationInProgress : Workflow Route Determined
+
+NotificationInProgress --> ClaimSubmitted : Notification Sent
+
+ClaimSubmitted --> [*]
+
+@enduml

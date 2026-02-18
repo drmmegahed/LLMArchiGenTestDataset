@@ -1,0 +1,45 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Awaiting Pharmacy Selection" as AwaitingPharmacySelection
+state "Drug Interaction Warning" as DrugInteractionWarning
+state "Notification Sent To Patient" as NotificationSentToPatient
+state "Prescription Accepted By Pharmacy" as PrescriptionAcceptedByPharmacy
+state "Prescription Completed" as PrescriptionCompleted
+state "Prescription Created" as PrescriptionCreated
+state "Prescription Rejected By Pharmacy" as PrescriptionRejectedByPharmacy
+state "Prescription Sent To Pharmacy" as PrescriptionSentToPharmacy
+state "Ready For Pharmacy Transmission" as ReadyForPharmacyTransmission
+state "Safety Checks In Progress" as SafetyChecksInProgress
+
+[*] --> PrescriptionCreated
+
+PrescriptionCreated --> SafetyChecksInProgress : Prescription submitted
+
+SafetyChecksInProgress --> DrugInteractionWarning : Drug interaction detected [moderate interaction]
+SafetyChecksInProgress --> ReadyForPharmacyTransmission : No interactions found
+
+DrugInteractionWarning --> ReadyForPharmacyTransmission : Acknowledged and continued
+
+ReadyForPharmacyTransmission --> PrescriptionSentToPharmacy : Prescription signed and sent
+
+PrescriptionSentToPharmacy --> PrescriptionAcceptedByPharmacy : Pharmacy accepted
+PrescriptionSentToPharmacy --> PrescriptionRejectedByPharmacy : Pharmacy rejected
+
+PrescriptionAcceptedByPharmacy --> NotificationSentToPatient : Notification sent
+NotificationSentToPatient --> PrescriptionCompleted : Notification delivered
+
+PrescriptionCompleted --> [*]
+
+PrescriptionRejectedByPharmacy --> AwaitingPharmacySelection : Select another pharmacy
+AwaitingPharmacySelection --> ReadyForPharmacyTransmission : New pharmacy selected
+
+@enduml

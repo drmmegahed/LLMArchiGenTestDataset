@@ -1,0 +1,86 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Awaiting Item Removal" as AwaitingItemRemoval
+state "Cart Cleared" as CartCleared
+state "Cart Viewed" as CartViewed
+state "Checkout Initiated" as CheckoutInitiated
+state "Customer Notified" as CustomerNotified
+state "Fulfillment Initiated" as FulfillmentInitiated
+state "Order Being Created" as OrderBeingCreated
+state "Order Completed" as OrderCompleted
+state "Order Confirmed" as OrderConfirmed
+state "Order Creation In Progress" as OrderCreationInProgress
+state "Order Processing Phase" as OrderProcessingPhase
+state "Order Review In Progress" as OrderReviewInProgress
+state "Payment Authorized" as PaymentAuthorized
+state "Payment Captured" as PaymentCaptured
+state "Payment Failed" as PaymentFailed
+state "Payment Failed Notified" as PaymentFailedNotified
+state "Payment In Progress" as PaymentInProgress
+state "Price Calculation In Progress" as PriceCalculationInProgress
+state "Reservation Failed" as ReservationFailed
+state "Reservation In Progress" as ReservationInProgress
+state "Reservation Phase" as ReservationPhase
+state "Reservation Released" as ReservationReleased
+state "Reservation Successful" as ReservationSuccessful
+state "Shipping Address Validation In Progress" as ShippingAddressValidationInProgress
+state "Stock Confirmed" as StockConfirmed
+
+[*] --> CartViewed
+
+CartViewed --> CheckoutInitiated : Proceed to checkout
+
+state ReservationPhase {
+  [*] --> ReservationInProgress
+  ReservationInProgress --> ReservationSuccessful : All items available
+  ReservationInProgress --> ReservationFailed : Some items unavailable
+}
+
+CheckoutInitiated --> ReservationPhase : initiateCheckout
+
+ReservationPhase --> PriceCalculationInProgress : ReservationSuccessful
+ReservationPhase --> AwaitingItemRemoval : ReservationFailed
+
+AwaitingItemRemoval --> CartViewed : Remove unavailable items
+
+PriceCalculationInProgress --> OrderReviewInProgress : Price breakdown calculated
+
+OrderReviewInProgress --> ShippingAddressValidationInProgress : Shipping address entered
+
+ShippingAddressValidationInProgress --> PaymentInProgress : Address validated
+
+PaymentInProgress --> PaymentAuthorized : Payment authorized
+PaymentInProgress --> PaymentFailed : Payment declined
+
+PaymentAuthorized --> OrderCreationInProgress : Payment successful
+
+state OrderProcessingPhase {
+  [*] --> OrderBeingCreated
+  OrderBeingCreated --> StockConfirmed : Order created and stock confirmed
+  StockConfirmed --> CartCleared : Cart cleared
+  CartCleared --> PaymentCaptured : Payment captured
+  PaymentCaptured --> FulfillmentInitiated : Fulfillment created
+  FulfillmentInitiated --> CustomerNotified : Customer notified
+  CustomerNotified --> OrderConfirmed : Order confirmation sent
+}
+
+OrderCreationInProgress --> OrderProcessingPhase : Order created
+
+OrderProcessingPhase --> OrderCompleted : Order confirmation sent
+
+OrderCompleted --> [*]
+
+PaymentFailed --> ReservationReleased : Release reservation
+ReservationReleased --> PaymentFailedNotified : Payment failure notified
+PaymentFailedNotified --> [*]
+
+@enduml

@@ -1,0 +1,83 @@
+@startuml C4_BillTel_Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram - BillTel Telecom Billing
+
+Container_Boundary(channels, "Customer Channels") {
+    Component(self_care, "Self-Care Portal", "React", "Customer billing portal")
+    Component(mobile_app, "Mobile App", "React Native", "Bill view & payment")
+    Component(csr_portal, "CSR Portal", "React", "Agent billing operations")
+}
+
+Container_Boundary(core, "Billing Core") {
+    Component(account_svc, "Account Service", "Java", "Customer accounts")
+    Component(subscription_svc, "Subscription Service", "Java", "Service subscriptions")
+    Component(catalog_svc, "Product Catalog", "Java", "Products & pricing")
+    Component(rating_svc, "Rating Engine", "Java", "Usage rating")
+    Component(charging_svc, "Charging Service", "Java", "Real-time charging")
+    Component(billing_svc, "Billing Service", "Java", "Invoice generation")
+    Component(payment_svc, "Payment Service", "Java", "Payment processing")
+    Component(dunning_svc, "Dunning Service", "Java", "Collections")
+}
+
+Container_Boundary(mediation, "Mediation Layer") {
+    Component(cdr_collector, "CDR Collector", "Java", "Usage record ingestion")
+    Component(cdr_processor, "CDR Processor", "Java", "Usage aggregation")
+    Component(cdr_validator, "CDR Validator", "Java", "Data quality")
+}
+
+Container_Boundary(integration, "Integration") {
+    Component(crm_adapter, "CRM Adapter", "Java", "CRM integration")
+    Component(payment_gw, "Payment Gateway", "Java", "Payment processing")
+    Component(tax_adapter, "Tax Adapter", "Java", "Tax calculation")
+    Component(notif_adapter, "Notification Adapter", "Java", "Bill delivery")
+}
+
+Container_Boundary(data, "Data Layer") {
+    ComponentDb(account_db, "Account DB", "PostgreSQL", "Accounts")
+    ComponentDb(billing_db, "Billing DB", "PostgreSQL", "Invoices")
+    ComponentDb(usage_db, "Usage DB", "TimescaleDB", "CDR storage")
+    ComponentDb(balance_cache, "Balance Cache", "Redis", "Real-time balances")
+    ComponentQueue(cdr_queue, "CDR Queue", "Kafka", "Usage events")
+}
+
+Container_Boundary(external, "External Systems") {
+    System_Ext(network, "Network/Mediation", "Usage records")
+    System_Ext(crm, "CRM System", "Customer data")
+    System_Ext(bank, "Payment Provider", "Payments")
+    System_Ext(tax_sys, "Tax System", "Tax rates")
+}
+
+' Connections
+self_care --> account_svc
+self_care --> billing_svc
+mobile_app --> payment_svc
+csr_portal --> subscription_svc
+
+network --> cdr_collector
+cdr_collector --> cdr_queue
+cdr_queue --> cdr_processor
+cdr_processor --> cdr_validator
+cdr_validator --> rating_svc
+
+rating_svc --> catalog_svc
+rating_svc --> charging_svc
+charging_svc --> balance_cache
+
+billing_svc --> rating_svc
+billing_svc --> tax_adapter
+tax_adapter --> tax_sys
+
+payment_svc --> payment_gw
+payment_gw --> bank
+
+dunning_svc --> notif_adapter
+billing_svc --> notif_adapter
+
+account_svc --> account_db
+billing_svc --> billing_db
+cdr_processor --> usage_db
+account_svc --> crm_adapter
+crm_adapter --> crm
+
+@enduml

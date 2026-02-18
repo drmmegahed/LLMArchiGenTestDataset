@@ -1,0 +1,65 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Allowance Checked" as AllowanceChecked
+state "Allowance Updated" as AllowanceUpdated
+state "Balance Checked" as BalanceChecked
+state "Balance Deducted" as BalanceDeducted
+state "CDR Persisted" as CdrPersisted
+state "CDR Received" as CdrReceived
+state "CDR Validated" as CdrValidated
+state "Charge Applied" as ChargeApplied
+state "Overage Calculated" as OverageCalculated
+state "Partial Charge Applied" as PartialChargeApplied
+state "Postpaid Charge" as PostpaidCharge
+state "Prepaid Charge" as PrepaidCharge
+state "Rated With Zero Charge" as RatedWithZeroCharge
+state "Unbilled Updated" as UnbilledUpdated
+state "Usage Rated" as UsageRated
+
+[*] --> CdrReceived
+
+CdrReceived --> CdrValidated : CDR parsed and validated
+
+CdrValidated --> CdrPersisted : CDR inserted into usage database
+
+CdrPersisted --> UsageRated : Usage rating started
+
+state UsageRated {
+  [*] --> AllowanceChecked
+  AllowanceChecked --> AllowanceUpdated : Within free allowance
+  AllowanceChecked --> OverageCalculated : Exceeds allowance
+
+  AllowanceUpdated --> RatedWithZeroCharge : Allowance updated
+  RatedWithZeroCharge --> [*] : Rated CDR published
+
+  OverageCalculated --> ChargeApplied : Overage charge calculated
+
+  state ChargeApplied {
+    [*] --> PostpaidCharge : Postpaid account [account type is postpaid]
+    [*] --> PrepaidCharge : Prepaid account [account type is prepaid]
+
+    PostpaidCharge --> UnbilledUpdated : Unbilled amount added
+    UnbilledUpdated --> [*] : Rated CDR published
+
+    PrepaidCharge --> BalanceChecked : Balance checked
+
+    BalanceChecked --> BalanceDeducted : Sufficient balance [balance sufficient]
+    BalanceDeducted --> [*] : Rated CDR published
+
+    BalanceChecked --> PartialChargeApplied : Insufficient balance [balance insufficient]
+    PartialChargeApplied --> [*] : Rated CDR published and low balance alert sent
+  }
+}
+
+UsageRated --> [*]
+
+@enduml

@@ -1,0 +1,157 @@
+@startuml SEQ_SARIE_Transfer
+title Instant Fund Transfer via SARIE - CoreBank
+
+actor "Customer" as customer
+participant "Mobile Banking" as mobile
+participant "API Gateway" as apigw
+participant "Transfer Service" as transfer
+participant "Account Service" as account
+participant "Limit Service" as limit
+participant "AML Service" as aml
+participant "Fraud Detection" as fraud
+participant "SARIE Gateway" as sarie
+participant "GL Service" as gl
+participant "Notification Service" as notif
+database "Account DB" as db
+entity "SAMA SARIE" as sama
+
+== Initiate Transfer ==
+
+customer -> mobile: Initiate transfer
+customer -> mobile: Enter beneficiary IBAN
+customer -> mobile: Enter amount (10,000 SAR)
+
+mobile -> apigw: POST /api/v1/transfers/sarie/validate
+apigw -> transfer: validateTransfer(request)
+
+transfer -> transfer: validateIBAN(beneficiaryIBAN)
+
+transfer -> account: getAccountDetails(sourceAccount)
+account -> db: SELECT * FROM accounts
+db --> account: {balance: 50000, status: ACTIVE}
+account --> transfer: {accountDetails}
+
+transfer -> limit: checkLimits(customerId, amount, type: SARIE)
+limit -> db: SELECT limits FROM customer_limits
+db --> limit: {dailyLimit: 100000, used: 20000}
+
+alt Within Limits
+    limit --> transfer: {allowed: true, remaining: 80000}
+else Exceeds Limit
+    limit --> transfer: {allowed: false, reason: DAILY_LIMIT}
+    transfer --> apigw: {error: LIMIT_EXCEEDED}
+    apigw --> mobile: Transfer limit exceeded
+    mobile --> customer: Show limit message
+end
+
+transfer --> apigw: {validated: true, fees: 0}
+apigw --> mobile: Show confirmation
+mobile --> customer: Confirm: Send 10,000 SAR?
+
+== Execute Transfer ==
+
+customer -> mobile: Confirm with fingerprint
+mobile -> apigw: POST /api/v1/transfers/sarie/execute
+apigw -> transfer: executeTransfer(transferId)
+
+== Compliance Checks ==
+
+transfer -> aml: screenTransaction(transfer)
+aml -> aml: checkWatchlists()
+aml -> aml: checkPatterns()
+
+alt AML Clear
+    aml --> transfer: {cleared: true}
+else AML Alert
+    aml --> transfer: {alert: true, reason: UNUSUAL_PATTERN}
+    transfer -> db: UPDATE transfers SET status = AML_REVIEW
+    transfer --> apigw: {pending: AML_REVIEW}
+    apigw --> mobile: Transfer under review
+    mobile --> customer: We'll notify you shortly
+end
+
+transfer -> fraud: assessRisk(transfer)
+fraud --> transfer: {riskScore: 15, action: PROCEED}
+
+== Debit Source Account ==
+
+transfer -> account: debit(sourceAccount, 10000)
+account -> db: BEGIN TRANSACTION
+account -> db: UPDATE accounts SET balance = balance - 10000
+account -> db: INSERT transactions (DEBIT, SARIE_OUT)
+db --> account: {newBalance: 40000, txnId: TXN-001}
+account --> transfer: {debited: true}
+
+== Send to SARIE ==
+
+transfer -> sarie: sendPayment(sarieRequest)
+
+note right
+ISO 20022 Message:
+- MsgId: SARIE-2025-001
+- CreDtTm: 2025-02-16T10:30:00
+- Amount: 10000.00 SAR
+- Debtor: Mohammed Ahmed
+- DebtorIBAN: SA001...
+- Creditor: Ahmed Ali
+- CreditorIBAN: SA002...
+- CreditorBank: RIBL
+end note
+
+sarie -> sama: pacs.008 (FI to FI Payment)
+sama -> sama: Validate & Route
+
+alt SARIE Success
+    sama --> sarie: pacs.002 (Status: ACCP)
+    sarie --> transfer: {accepted, sarieRef: SARIE123}
+    
+    transfer -> db: UPDATE transfers SET status = COMPLETED
+    transfer -> db: COMMIT
+    
+    == GL Posting ==
+    
+    transfer -> gl: postTransfer(transfer)
+    gl -> gl: createEntries()
+    
+    note right
+    GL Entries:
+    DR: Customer Account  10000
+    CR: SARIE Clearing    10000
+    end note
+    
+    gl --> transfer: {posted}
+    
+    == Update Limits ==
+    
+    transfer -> limit: updateUsage(customerId, 10000)
+    limit -> db: UPDATE customer_limits SET daily_used = 30000
+    
+    == Notify ==
+    
+    transfer -> notif: sendTransferConfirmation(transfer)
+    notif -> customer: SMS "Sent 10,000 SAR to Ahmed Ali"
+    notif -> customer: Push notification
+    
+    transfer --> apigw: {status: COMPLETED, reference: TRF-001}
+    apigw --> mobile: Transfer successful
+    mobile --> customer: Show success receipt
+    
+else SARIE Rejected
+    sama --> sarie: pacs.002 (Status: RJCT, Reason: AC01)
+    sarie --> transfer: {rejected, reason: INVALID_ACCOUNT}
+    
+    == Reverse Debit ==
+    
+    transfer -> account: credit(sourceAccount, 10000)
+    account -> db: UPDATE accounts SET balance = balance + 10000
+    account -> db: INSERT transactions (CREDIT, SARIE_REVERSAL)
+    account -> db: COMMIT
+    
+    transfer -> db: UPDATE transfers SET status = FAILED
+    
+    transfer --> apigw: {failed, reason: BENEFICIARY_INVALID}
+    apigw --> mobile: Transfer failed
+    mobile --> customer: Invalid beneficiary account
+end
+
+@enduml

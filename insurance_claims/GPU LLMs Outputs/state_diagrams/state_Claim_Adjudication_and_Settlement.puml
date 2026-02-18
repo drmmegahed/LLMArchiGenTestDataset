@@ -1,0 +1,76 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Adjudication In Progress" as AdjudicationInProgress
+state "Awaiting Adjuster Approval" as AwaitingAdjusterApproval
+state "Awaiting Bank Confirmation" as AwaitingBankConfirmation
+state "Awaiting Customer Acceptance" as AwaitingCustomerAcceptance
+state "Awaiting Garage Estimate" as AwaitingGarageEstimate
+state "Claim Closed" as ClaimClosed
+state "Claim Opened" as ClaimOpened
+state "Customer Notified Direct Payment" as CustomerNotifiedDirectPayment
+state "Customer Notified Garage Payment" as CustomerNotifiedGaragePayment
+state "Garage Estimate Received" as GarageEstimateReceived
+state "Notifying Garage Payment" as NotifyingGaragePayment
+state "Payment Initiated To Customer" as PaymentInitiatedToCustomer
+state "Payment Initiated To Garage" as PaymentInitiatedToGarage
+state "Payment Processing In Progress" as PaymentProcessingInProgress
+state "Processing Payment To Customer" as ProcessingPaymentToCustomer
+state "Processing Payment To Garage" as ProcessingPaymentToGarage
+state "Settlement Accepted" as SettlementAccepted
+state "Settlement Approved" as SettlementApproved
+state "Settlement Calculation Completed" as SettlementCalculationCompleted
+state "Settlement Offer Generated" as SettlementOfferGenerated
+state "Under Review" as UnderReview
+
+[*] --> ClaimOpened
+
+ClaimOpened --> UnderReview : Claim details retrieved
+
+UnderReview --> AwaitingGarageEstimate : Garage estimate requested
+AwaitingGarageEstimate --> GarageEstimateReceived : Garage estimate submitted
+GarageEstimateReceived --> UnderReview : Estimate received and notified
+
+UnderReview --> AdjudicationInProgress : Proceed to adjudicate
+
+AdjudicationInProgress --> SettlementCalculationCompleted : Rules applied and settlement calculated
+
+SettlementCalculationCompleted --> AwaitingAdjusterApproval : Settlement presented for approval
+
+AwaitingAdjusterApproval --> SettlementApproved : Settlement approved by adjuster
+
+SettlementApproved --> SettlementOfferGenerated : Settlement letter generated and offer sent
+
+SettlementOfferGenerated --> AwaitingCustomerAcceptance : Settlement offer delivered
+
+AwaitingCustomerAcceptance --> SettlementAccepted : Customer accepts settlement
+
+SettlementAccepted --> PaymentProcessingInProgress : Payment processing initiated
+
+state PaymentProcessingInProgress {
+  [*] --> ProcessingPaymentToGarage : Payment to garage [if payment preference is garage]
+  [*] --> ProcessingPaymentToCustomer : Payment to customer [if payment preference is customer]
+
+  ProcessingPaymentToGarage --> PaymentInitiatedToGarage : Payment initiated to garage
+  PaymentInitiatedToGarage --> NotifyingGaragePayment : Garage notified of payment
+  NotifyingGaragePayment --> CustomerNotifiedGaragePayment : Customer notified of garage payment
+  CustomerNotifiedGaragePayment --> AwaitingBankConfirmation : Awaiting bank confirmation
+
+  ProcessingPaymentToCustomer --> PaymentInitiatedToCustomer : Payment initiated to customer
+  PaymentInitiatedToCustomer --> CustomerNotifiedDirectPayment : Customer notified of direct payment
+  CustomerNotifiedDirectPayment --> AwaitingBankConfirmation : Awaiting bank confirmation
+}
+
+PaymentProcessingInProgress --> ClaimClosed : Bank confirmation received and claim closed
+
+ClaimClosed --> [*]
+
+@enduml

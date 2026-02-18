@@ -1,0 +1,77 @@
+@startuml C4_ShopEase_Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram - ShopEase E-Commerce Platform
+
+Container_Boundary(frontend, "Customer Frontend") {
+    Component(web_store, "Web Store", "React", "Shopping experience")
+    Component(mobile_app, "Mobile App", "React Native", "Mobile shopping")
+}
+
+Container_Boundary(api, "API Layer") {
+    Component(api_gw, "API Gateway", "Kong", "Routing, auth, rate limiting")
+    Component(bff, "BFF Service", "Node.js", "Backend for Frontend")
+}
+
+Container_Boundary(commerce, "Commerce Services") {
+    Component(catalog_svc, "Catalog Service", "Java", "Product catalog")
+    Component(cart_svc, "Cart Service", "Java", "Shopping cart management")
+    Component(checkout_svc, "Checkout Service", "Java", "Checkout orchestration")
+    Component(order_svc, "Order Service", "Java", "Order lifecycle")
+    Component(pricing_svc, "Pricing Service", "Java", "Prices, discounts, promos")
+    Component(inventory_svc, "Inventory Service", "Java", "Stock management")
+}
+
+Container_Boundary(payment, "Payment") {
+    Component(payment_svc, "Payment Service", "Java", "Payment orchestration")
+    Component(payment_gw, "Payment Gateway", "Java", "Gateway integration")
+}
+
+Container_Boundary(fulfillment, "Fulfillment") {
+    Component(fulfill_svc, "Fulfillment Service", "Java", "Order fulfillment")
+    Component(shipping_svc, "Shipping Service", "Java", "Carrier integration")
+}
+
+Container_Boundary(customer, "Customer") {
+    Component(customer_svc, "Customer Service", "Java", "Customer profiles")
+    Component(address_svc, "Address Service", "Java", "Address management")
+}
+
+Container_Boundary(data, "Data Layer") {
+    ComponentDb(catalog_db, "Catalog DB", "MongoDB", "Products")
+    ComponentDb(order_db, "Order DB", "PostgreSQL", "Orders")
+    ComponentDb(inventory_db, "Inventory DB", "PostgreSQL", "Stock")
+    ComponentDb(cart_cache, "Cart Cache", "Redis", "Active carts")
+    ComponentQueue(events, "Event Bus", "Kafka", "Domain events")
+}
+
+Container_Boundary(external, "External") {
+    System_Ext(pay_provider, "Payment Provider", "Stripe/PayTabs")
+    System_Ext(warehouse, "Warehouse", "Fulfillment")
+    System_Ext(carriers, "Shipping Carriers", "DHL/Aramex")
+}
+
+' Connections
+web_store --> api_gw
+mobile_app --> api_gw
+api_gw --> bff
+bff --> cart_svc
+bff --> catalog_svc
+bff --> checkout_svc
+checkout_svc --> cart_svc
+checkout_svc --> inventory_svc
+checkout_svc --> payment_svc
+checkout_svc --> order_svc
+payment_svc --> payment_gw
+payment_gw --> pay_provider
+order_svc --> fulfill_svc
+fulfill_svc --> warehouse
+fulfill_svc --> shipping_svc
+shipping_svc --> carriers
+cart_svc --> cart_cache
+catalog_svc --> catalog_db
+order_svc --> order_db
+inventory_svc --> inventory_db
+order_svc --> events
+
+@enduml

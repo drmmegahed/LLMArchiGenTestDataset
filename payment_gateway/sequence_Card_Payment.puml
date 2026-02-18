@@ -1,0 +1,134 @@
+@startuml SEQ_Card_Payment
+title Card Payment Authorization Flow - PayFlow
+
+actor "Customer" as customer
+participant "Merchant Website" as merchant
+participant "PayFlow SDK" as sdk
+participant "Payment API" as api
+participant "Payment Orchestrator" as orch
+participant "Fraud Engine" as fraud
+participant "Tokenizer" as token
+participant "3DS Service" as threeds
+participant "Authorization Engine" as auth
+participant "VISA/MC Adapter" as adapter
+entity "Card Network" as network
+database "Transaction DB" as db
+
+== Payment Initiation ==
+
+customer -> merchant: Checkout (100 USD)
+merchant -> sdk: Initialize payment
+sdk -> api: POST /v1/payments/initialize
+api -> orch: createPayment(merchantId, amount, currency)
+orch -> db: INSERT payment (PENDING)
+db --> orch: {paymentId: PAY-123}
+orch --> api: {paymentId, clientSecret}
+api --> sdk: {paymentId, clientSecret}
+sdk --> merchant: Payment form ready
+
+== Card Collection ==
+
+customer -> sdk: Enter card details\n(4111-1111-1111-1111)
+sdk -> sdk: Validate card (Luhn check)
+sdk -> api: POST /v1/payments/PAY-123/confirm
+api -> orch: confirmPayment(paymentId, cardData)
+
+== Tokenization ==
+
+orch -> token: tokenize(pan, expiry, cvv)
+token -> token: Encrypt via HSM
+token -> token: Generate token
+token --> orch: {token: tok_abc123}
+
+== Fraud Screening ==
+
+orch -> fraud: assessRisk(payment, cardToken)
+fraud -> fraud: ML model inference
+
+note right
+Risk Factors:
+- Card country: USA
+- IP geolocation: USA
+- Amount: Normal
+- Device fingerprint: Known
+- Velocity: OK
+Risk Score: 25 (LOW)
+end note
+
+alt Risk Score < 50 (Low Risk)
+    fraud --> orch: {score: 25, action: PROCEED}
+    
+else Risk Score 50-80 (Medium Risk)
+    fraud --> orch: {score: 65, action: STEP_UP}
+    orch -> threeds: require3DS()
+    
+else Risk Score > 80 (High Risk)
+    fraud --> orch: {score: 90, action: DECLINE}
+    orch -> db: UPDATE payment SET status = DECLINED
+    orch --> api: {declined, reason: FRAUD}
+    api --> sdk: Payment declined
+    sdk --> merchant: Show error
+end
+
+== 3D Secure (if required) ==
+
+orch -> threeds: initiate3DS(cardToken, amount)
+threeds -> network: 3DS Version Check
+network --> threeds: {3dsVersion: 2.1}
+threeds -> network: Authentication Request (AReq)
+network --> threeds: {acsUrl, creq}
+threeds --> orch: {redirect: acsUrl}
+orch --> api: {action: 3DS_CHALLENGE}
+api --> sdk: Redirect to 3DS
+sdk -> customer: Bank verification page
+
+customer -> network: Complete 3DS
+network --> sdk: {cres: SUCCESS}
+sdk -> api: POST /v1/payments/PAY-123/3ds-complete
+api -> orch: complete3DS(paymentId, cres)
+orch -> threeds: validate3DS(cres)
+threeds --> orch: {authenticated: true, eci: 05}
+
+== Authorization ==
+
+orch -> auth: authorize(cardToken, amount, eci)
+auth -> adapter: buildAuthRequest(ISO8583)
+
+note right
+ISO 8583 Message:
+- MTI: 0100
+- PAN: tokenized
+- Amount: 10000 (cents)
+- Currency: 840 (USD)
+- MCC: 5411
+end note
+
+adapter -> network: Authorization Request
+network -> network: Issuer approval
+network --> adapter: Authorization Response
+
+alt Authorization Approved
+    adapter --> auth: {approved, authCode: 123456, rrn: 987654321}
+    auth --> orch: {approved: true}
+    
+    orch -> db: UPDATE payment SET status = AUTHORIZED
+    orch -> db: INSERT authorization (authCode, rrn)
+    
+    orch --> api: {status: SUCCEEDED, authCode}
+    api --> sdk: Payment successful
+    sdk --> merchant: Show success
+    merchant --> customer: Order confirmed
+    
+    orch -> orch: scheduleCapture()
+    
+else Authorization Declined
+    adapter --> auth: {declined, reason: INSUFFICIENT_FUNDS}
+    auth --> orch: {approved: false, reason}
+    orch -> db: UPDATE payment SET status = DECLINED
+    orch --> api: {declined, reason}
+    api --> sdk: Payment declined
+    sdk --> merchant: Show decline message
+    merchant --> customer: Try another card
+end
+
+@enduml

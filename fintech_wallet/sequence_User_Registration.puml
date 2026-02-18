@@ -1,0 +1,110 @@
+@startuml SEQ_User_Registration
+title User Registration and KYC Flow - FinWallet
+
+actor "Customer" as user
+participant "FinWallet App" as app
+participant "API Gateway" as apigw
+participant "Authentication Service" as auth
+participant "User Service" as usersvc
+participant "KYC Service" as kyc
+participant "Elm Yakeen" as elm
+participant "WorldCheck" as wc
+participant "Notification Service" as notif
+database "User Database" as db
+
+== Mobile Number Registration ==
+
+user -> app: Enter mobile number
+app -> apigw: POST /api/v1/auth/register/init
+apigw -> auth: initiateRegistration(mobileNumber)
+auth -> auth: generateOTP()
+auth -> notif: sendOTP(mobileNumber, otp)
+notif --> auth: sent
+auth --> apigw: {sessionId, otpSent: true}
+apigw --> app: {sessionId}
+app --> user: Display OTP input screen
+
+user -> app: Enter OTP
+app -> apigw: POST /api/v1/auth/register/verify-otp
+apigw -> auth: verifyOTP(sessionId, otp)
+
+alt OTP Valid
+    auth -> usersvc: createUser(mobileNumber)
+    usersvc -> db: INSERT user record
+    db --> usersvc: userId
+    usersvc --> auth: {userId, status: PENDING_KYC}
+    auth --> apigw: {userId, token, status: PENDING_KYC}
+    apigw --> app: Registration successful
+else OTP Invalid
+    auth --> apigw: {error: INVALID_OTP}
+    apigw --> app: Invalid OTP
+    app --> user: Show error, retry
+end
+
+== KYC Data Collection ==
+
+user -> app: Enter personal details\n(name, DOB, address)
+app -> apigw: POST /api/v1/kyc/personal-info
+apigw -> kyc: submitPersonalInfo(userId, data)
+kyc -> db: UPDATE user personal info
+kyc --> apigw: {status: INFO_RECEIVED}
+
+user -> app: Capture National ID photo
+app -> apigw: POST /api/v1/kyc/documents
+apigw -> kyc: uploadDocument(userId, nationalId)
+kyc -> kyc: extractIDData(image)
+
+note right
+OCR extracts:
+- ID Number
+- Full Name (Arabic/English)
+- Date of Birth
+- Expiry Date
+end note
+
+kyc -> db: STORE document & extracted data
+kyc --> apigw: {documentId, extractedData}
+apigw --> app: Document uploaded
+
+== National ID Verification ==
+
+app -> apigw: POST /api/v1/kyc/verify
+apigw -> kyc: initiateVerification(userId)
+kyc -> elm: verifyIdentity(idNumber, dob, name)
+
+alt Elm Verification Success
+    elm --> kyc: {verified: true, yakeen_ref}
+    kyc -> db: UPDATE kyc_status = ID_VERIFIED
+    
+    == Sanctions Screening ==
+    
+    kyc -> wc: screenIndividual(name, dob, nationality)
+    
+    alt No Sanctions Match
+        wc --> kyc: {clear: true, score: 0}
+        kyc -> db: UPDATE kyc_status = APPROVED
+        kyc -> usersvc: activateWallet(userId)
+        usersvc -> db: CREATE wallet record
+        kyc -> notif: sendKYCApproval(userId)
+        notif -> user: SMS "KYC Approved"
+        kyc --> apigw: {status: APPROVED, walletId}
+        apigw --> app: KYC Approved
+        app --> user: Welcome! Wallet ready
+        
+    else Potential Match Found
+        wc --> kyc: {clear: false, matches: [...]}
+        kyc -> db: UPDATE kyc_status = UNDER_REVIEW
+        kyc --> apigw: {status: UNDER_REVIEW}
+        apigw --> app: Under manual review
+        app --> user: Application under review
+    end
+    
+else Elm Verification Failed
+    elm --> kyc: {verified: false, reason}
+    kyc -> db: UPDATE kyc_status = REJECTED
+    kyc --> apigw: {status: REJECTED, reason}
+    apigw --> app: Verification failed
+    app --> user: Show error message
+end
+
+@enduml

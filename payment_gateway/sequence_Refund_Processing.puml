@@ -1,0 +1,135 @@
+@startuml SEQ_Refund_Processing
+title Refund Processing Flow - PayFlow
+
+actor "Merchant" as merchant
+participant "Merchant Portal" as portal
+participant "Payment API" as api
+participant "Refund Service" as refund
+participant "Authorization Engine" as auth
+participant "Card Adapter" as adapter
+participant "Settlement Service" as settlement
+participant "Webhook Service" as webhook
+database "Transaction DB" as db
+entity "Card Network" as network
+
+== Initiate Refund ==
+
+merchant -> portal: Select transaction to refund
+merchant -> portal: Enter refund amount (50 USD of 100 USD)
+
+portal -> api: POST /v1/refunds
+note right
+Request:
+{
+  "paymentId": "PAY-123",
+  "amount": 5000,
+  "reason": "Customer request"
+}
+end note
+
+api -> refund: createRefund(paymentId, amount, reason)
+
+refund -> db: SELECT * FROM payments WHERE id = PAY-123
+db --> refund: {payment details, status: CAPTURED}
+
+refund -> refund: validateRefund()
+
+note right
+Validation:
+- Payment status = CAPTURED ✓
+- Refund amount <= captured ✓
+- Within refund window (180 days) ✓
+- No pending refunds ✓
+end note
+
+alt Validation Passed
+
+    refund -> db: INSERT refunds (PENDING)
+    db --> refund: {refundId: REF-456}
+    
+    == Process Refund with Network ==
+    
+    refund -> auth: processRefund(originalAuth, amount)
+    auth -> adapter: buildRefundRequest(ISO8583)
+    
+    note right
+    ISO 8583 Message:
+    - MTI: 0200
+    - Processing Code: 200000
+    - Original RRN: 987654321
+    - Amount: 5000
+    end note
+    
+    adapter -> network: Refund Request
+    network -> network: Process refund
+    network --> adapter: Refund Response
+    
+    alt Refund Approved
+        adapter --> auth: {approved, refundRrn: 111222333}
+        auth --> refund: {success: true}
+        
+        refund -> db: UPDATE refunds SET status = SUCCEEDED
+        refund -> db: UPDATE payments SET refunded_amount = 5000
+        
+        == Update Settlement ==
+        
+        refund -> settlement: adjustSettlement(merchantId, -5000)
+        settlement -> db: UPDATE settlement_batch
+        settlement --> refund: {adjusted}
+        
+        == Notify Merchant ==
+        
+        refund -> webhook: sendWebhook(merchantId, REFUND_SUCCEEDED)
+        webhook -> merchant: POST /webhook\n{refundId, status: succeeded}
+        
+        refund --> api: {refundId: REF-456, status: succeeded}
+        api --> portal: Refund successful
+        portal --> merchant: Show confirmation
+        
+    else Refund Declined
+        adapter --> auth: {declined, reason: ORIGINAL_NOT_FOUND}
+        auth --> refund: {success: false, reason}
+        
+        refund -> db: UPDATE refunds SET status = FAILED
+        refund --> api: {error: REFUND_FAILED, reason}
+        api --> portal: Refund failed
+        portal --> merchant: Show error + retry option
+    end
+
+else Validation Failed
+    refund --> api: {error: VALIDATION_FAILED, reason: EXCEEDS_CAPTURED}
+    api --> portal: Invalid refund request
+    portal --> merchant: Cannot refund more than captured amount
+end
+
+== Full Refund Scenario ==
+
+merchant -> portal: Refund remaining 50 USD
+portal -> api: POST /v1/refunds
+api -> refund: createRefund(PAY-123, 5000)
+
+refund -> db: SELECT refunded_amount FROM payments
+db --> refund: {capturedAmount: 10000, refundedAmount: 5000}
+
+refund -> refund: remainingRefundable = 10000 - 5000 = 5000
+
+note right
+Full refund will mark
+payment as FULLY_REFUNDED
+end note
+
+refund -> auth: processRefund(originalAuth, 5000)
+auth -> adapter: buildRefundRequest()
+adapter -> network: Refund Request
+network --> adapter: {approved}
+adapter --> auth: {success}
+auth --> refund: {success}
+
+refund -> db: UPDATE payments SET status = FULLY_REFUNDED
+refund -> db: UPDATE refunds SET status = SUCCEEDED
+
+refund --> api: {refundId: REF-789, status: succeeded, paymentStatus: fully_refunded}
+api --> portal: Full refund complete
+portal --> merchant: Payment fully refunded
+
+@enduml

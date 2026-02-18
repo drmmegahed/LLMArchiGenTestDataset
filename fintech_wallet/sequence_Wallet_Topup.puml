@@ -1,0 +1,106 @@
+@startuml SEQ_Wallet_Topup
+title Wallet Top-up via Card Payment - FinWallet
+
+actor "Customer" as user
+participant "FinWallet App" as app
+participant "API Gateway" as apigw
+participant "Wallet Service" as wallet
+participant "Payment Service" as payment
+participant "Card Network Adapter" as cardadapter
+participant "Fraud Detection" as fraud
+participant "Notification Service" as notif
+database "Wallet Database" as db
+entity "VISA/Mastercard" as cardnetwork
+
+== Initiate Top-up ==
+
+user -> app: Select "Add Money"
+user -> app: Choose "Credit/Debit Card"
+user -> app: Enter amount (1000 SAR)
+
+app -> apigw: POST /api/v1/wallet/topup/init
+apigw -> wallet: initiateTopup(userId, amount, method: CARD)
+
+wallet -> wallet: validateAmount(amount)
+
+note right
+Validation Rules:
+- Min: 10 SAR
+- Max: 10,000 SAR per txn
+- Daily limit: 20,000 SAR
+end note
+
+wallet -> db: SELECT daily_topup FROM user_limits
+db --> wallet: {dailyUsed: 5000, limit: 20000}
+
+alt Within Limits
+    wallet --> apigw: {topupId, amount, paymentMethods}
+    apigw --> app: Show card selection
+else Exceeds Daily Limit
+    wallet --> apigw: {error: DAILY_LIMIT_EXCEEDED}
+    apigw --> app: Daily limit reached
+    app --> user: Show limit message
+end
+
+== Card Selection & 3DS ==
+
+user -> app: Select saved card (****4532)
+app -> apigw: POST /api/v1/wallet/topup/pay
+apigw -> payment: processCardPayment(topupId, cardToken)
+
+payment -> fraud: preAuthCheck(userId, cardToken, amount)
+fraud --> payment: {approved: true}
+
+payment -> cardadapter: authorize(cardToken, amount, currency)
+cardadapter -> cardnetwork: ISO8583 Authorization Request
+
+cardnetwork -> cardnetwork: 3DS Authentication Required
+
+cardnetwork --> cardadapter: {status: 3DS_REQUIRED, acsUrl, pareq}
+cardadapter --> payment: {requires3DS: true, redirectUrl}
+payment --> apigw: {action: 3DS_REDIRECT, url}
+apigw --> app: Open 3DS WebView
+
+app -> user: Display bank 3DS page
+user -> app: Enter OTP from bank
+app -> cardnetwork: Submit 3DS response
+
+alt 3DS Authentication Success
+    cardnetwork --> app: {pares: SUCCESS}
+    app -> apigw: POST /api/v1/wallet/topup/3ds-callback
+    apigw -> payment: complete3DS(topupId, pares)
+    
+    payment -> cardadapter: capturePayment(authCode)
+    cardadapter -> cardnetwork: Capture Request
+    cardnetwork --> cardadapter: {captured: true, rrn: 123456789}
+    cardadapter --> payment: {success, reference}
+    
+    == Credit Wallet ==
+    
+    payment -> wallet: creditWallet(userId, amount)
+    wallet -> db: BEGIN TRANSACTION
+    wallet -> db: UPDATE wallets SET balance = balance + 1000
+    wallet -> db: INSERT transactions (TOPUP, CARD)
+    wallet -> db: UPDATE user_limits SET daily_topup = daily_topup + 1000
+    wallet -> db: COMMIT
+    db --> wallet: {newBalance: 2500}
+    wallet --> payment: {credited: true, balance: 2500}
+    
+    payment -> notif: sendTopupConfirmation(userId, amount)
+    notif -> user: Push "Added 1000 SAR to wallet"
+    
+    payment --> apigw: {status: SUCCESS, balance: 2500}
+    apigw --> app: Top-up successful
+    app --> user: Show new balance (2,500 SAR)
+    
+else 3DS Authentication Failed
+    cardnetwork --> app: {pares: FAILED}
+    app -> apigw: POST /api/v1/wallet/topup/3ds-callback
+    apigw -> payment: complete3DS(topupId, pares: FAILED)
+    payment -> db: UPDATE topups SET status = 3DS_FAILED
+    payment --> apigw: {error: 3DS_FAILED}
+    apigw --> app: Authentication failed
+    app --> user: Try another card
+end
+
+@enduml

@@ -1,0 +1,42 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Addresses Validated" as AddressesValidated
+state "Awaiting Shipper Confirmation" as AwaitingShipperConfirmation
+state "Driver Assigned" as DriverAssigned
+state "Pickup Scheduled" as PickupScheduled
+state "Rate Calculated" as RateCalculated
+state "Shipment Confirmed" as ShipmentConfirmed
+state "Shipment Creation Completed" as ShipmentCreationCompleted
+state "Shipment Information Entered" as ShipmentInformationEntered
+state "Shipper Notified" as ShipperNotified
+
+[*] --> ShipmentInformationEntered
+
+ShipmentInformationEntered --> AddressesValidated : AddressesValidated Successfully
+
+AddressesValidated --> RateCalculated : Rate Calculation Completed
+
+RateCalculated --> AwaitingShipperConfirmation : Quote Presented to Shipper
+
+AwaitingShipperConfirmation --> ShipmentConfirmed : Shipper Confirms Shipment
+
+ShipmentConfirmed --> PickupScheduled : PickupScheduled with Warehouse
+
+PickupScheduled --> DriverAssigned : Driver Assignment Completed
+
+DriverAssigned --> ShipperNotified : ShipperNotified of Shipment Details
+
+ShipperNotified --> ShipmentCreationCompleted : ShipmentCreationCompleted
+
+ShipmentCreationCompleted --> [*]
+
+@enduml

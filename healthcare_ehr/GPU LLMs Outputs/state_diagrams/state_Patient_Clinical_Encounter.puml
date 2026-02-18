@@ -1,0 +1,47 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Clinical Note Drafted" as ClinicalNoteDrafted
+state "Clinical Note Signed" as ClinicalNoteSigned
+state "Clinical Note Updated" as ClinicalNoteUpdated
+state "Diagnosis Added" as DiagnosisAdded
+state "Encounter Completed" as EncounterCompleted
+state "Lab Order Placed" as LabOrderPlaced
+state "Patient Chart Review In Progress" as PatientChartReviewInProgress
+state "Patient Checked In" as PatientCheckedIn
+state "Vitals Alert Present" as VitalsAlertPresent
+state "Vitals Recorded" as VitalsRecorded
+state "Vitals Recording In Progress" as VitalsRecordingInProgress
+
+[*] --> PatientCheckedIn
+
+PatientCheckedIn --> VitalsRecordingInProgress : Vitals Recording Started
+VitalsRecordingInProgress --> VitalsRecorded : Vitals Data Submitted
+
+VitalsRecorded --> VitalsAlertPresent : Abnormal Vitals Detected [alert: HIGH_BP]
+VitalsRecorded --> PatientChartReviewInProgress : No Abnormal Vitals
+
+VitalsAlertPresent --> PatientChartReviewInProgress : Alert Acknowledged
+
+PatientChartReviewInProgress --> ClinicalNoteDrafted : Clinical Note Started
+ClinicalNoteDrafted --> ClinicalNoteUpdated : ClinicalNoteUpdated
+
+ClinicalNoteUpdated --> DiagnosisAdded : DiagnosisAdded
+
+DiagnosisAdded --> LabOrderPlaced : Lab Order Created
+
+LabOrderPlaced --> ClinicalNoteSigned : ClinicalNoteSigned
+
+ClinicalNoteSigned --> EncounterCompleted : Encounter Closed
+
+EncounterCompleted --> [*]
+
+@enduml

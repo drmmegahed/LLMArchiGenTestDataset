@@ -1,0 +1,3 @@
+components_diagram.puml | MediCare EHR System - Component Diagram
+sequence_Patient_Encounter.puml | Patient Clinical Encounter
+sequence_Prescription.puml | Electronic Prescription (e-Prescribing)

@@ -1,0 +1,56 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Authorization In Progress" as AuthorizationInProgress
+state "Card Details Collected" as CardDetailsCollected
+state "Card Validated" as CardValidated
+state "Fraud Screening In Progress" as FraudScreeningInProgress
+state "Payment Authorized" as PaymentAuthorized
+state "Payment Declined" as PaymentDeclined
+state "Payment Declined Due To Fraud" as PaymentDeclinedDueToFraud
+state "Payment Initiated" as PaymentInitiated
+state "Step Up Authentication Required" as StepUpAuthenticationRequired
+state "Three D Secure Completed" as ThreeDSecureCompleted
+state "Three D Secure In Progress" as ThreeDSecureInProgress
+state "Tokenization Completed" as TokenizationCompleted
+state "Tokenization In Progress" as TokenizationInProgress
+
+[*] --> PaymentInitiated
+
+PaymentInitiated --> CardDetailsCollected : Card details entered
+
+CardDetailsCollected --> CardValidated : Card validation successful
+
+CardValidated --> TokenizationInProgress : Payment confirmation received
+
+TokenizationInProgress --> TokenizationCompleted : Token generated
+
+TokenizationCompleted --> FraudScreeningInProgress : Risk assessment started
+
+FraudScreeningInProgress --> PaymentDeclinedDueToFraud : Fraud assessment completed [Risk Score > 80]
+PaymentDeclinedDueToFraud --> [*]
+
+FraudScreeningInProgress --> StepUpAuthenticationRequired : Fraud assessment completed [Risk Score 50-80]
+StepUpAuthenticationRequired --> ThreeDSecureInProgress : 3DS initiated
+
+ThreeDSecureInProgress --> ThreeDSecureCompleted : 3DS authentication successful
+
+ThreeDSecureCompleted --> AuthorizationInProgress : 3DS validated
+
+FraudScreeningInProgress --> AuthorizationInProgress : Fraud assessment completed [Risk Score < 50]
+
+AuthorizationInProgress --> PaymentAuthorized : Authorization approved
+PaymentAuthorized --> [*]
+
+AuthorizationInProgress --> PaymentDeclined : Authorization declined
+PaymentDeclined --> [*]
+
+@enduml

@@ -1,0 +1,120 @@
+@startuml SEQ_P2P_Transfer
+title Peer-to-Peer Fund Transfer - FinWallet
+
+actor "Sender" as sender
+participant "FinWallet App" as app
+participant "API Gateway" as apigw
+participant "Transfer Service" as transfer
+participant "Wallet Service" as wallet
+participant "Fraud Detection" as fraud
+participant "User Service" as usersvc
+participant "Notification Service" as notif
+database "Wallet Database" as db
+queue "Event Bus" as kafka
+
+== Initiate Transfer ==
+
+sender -> app: Select P2P Transfer
+sender -> app: Enter recipient mobile number
+sender -> app: Enter amount (500 SAR)
+
+app -> apigw: POST /api/v1/transfers/p2p/init
+apigw -> transfer: initiateP2PTransfer(senderId, recipientMobile, amount)
+
+transfer -> usersvc: findUserByMobile(recipientMobile)
+
+alt Recipient Found
+    usersvc --> transfer: {recipientId, name, walletId}
+    
+    transfer -> wallet: checkBalance(senderWalletId)
+    wallet -> db: SELECT balance FROM wallets
+    db --> wallet: {balance: 1500}
+    
+    alt Sufficient Balance
+        wallet --> transfer: {available: 1500, sufficient: true}
+        
+        transfer -> transfer: calculateFees(amount, type: P2P)
+        
+        note right
+        Fee Calculation:
+        - P2P to FinWallet: FREE
+        - Amount: 500 SAR
+        - Total: 500 SAR
+        end note
+        
+        transfer --> apigw: {recipientName, amount, fees, total}
+        apigw --> app: Show confirmation screen
+        app --> sender: Confirm: Send 500 SAR to Ahmed?
+        
+    else Insufficient Balance
+        wallet --> transfer: {available: 100, sufficient: false}
+        transfer --> apigw: {error: INSUFFICIENT_BALANCE}
+        apigw --> app: Insufficient balance
+        app --> sender: Show top-up options
+    end
+    
+else Recipient Not Found
+    usersvc --> transfer: {error: USER_NOT_FOUND}
+    transfer --> apigw: {error: RECIPIENT_NOT_FOUND}
+    apigw --> app: Recipient not registered
+    app --> sender: Invite recipient to FinWallet?
+end
+
+== Confirm and Execute Transfer ==
+
+sender -> app: Confirm transfer
+app -> apigw: POST /api/v1/transfers/p2p/confirm
+apigw -> transfer: confirmP2PTransfer(transferId, pin)
+
+transfer -> fraud: assessRisk(senderId, recipientId, amount)
+fraud -> fraud: calculateRiskScore()
+
+note right
+Risk Assessment:
+- Sender history: LOW
+- Amount: NORMAL
+- Recipient: KNOWN
+- Score: 15/100 (LOW)
+end note
+
+alt Risk Score Acceptable (< 70)
+    fraud --> transfer: {riskScore: 15, action: APPROVE}
+    
+    == Execute Transfer ==
+    
+    transfer -> db: BEGIN TRANSACTION
+    
+    transfer -> wallet: debit(senderWalletId, 500)
+    wallet -> db: UPDATE wallets SET balance = balance - 500
+    wallet -> db: INSERT transaction (DEBIT)
+    db --> wallet: {txnId: TXN001}
+    wallet --> transfer: {success, txnId: TXN001}
+    
+    transfer -> wallet: credit(recipientWalletId, 500)
+    wallet -> db: UPDATE wallets SET balance = balance + 500
+    wallet -> db: INSERT transaction (CREDIT)
+    db --> wallet: {txnId: TXN002}
+    wallet --> transfer: {success, txnId: TXN002}
+    
+    transfer -> db: COMMIT TRANSACTION
+    
+    transfer -> kafka: publish(TransferCompleted)
+    
+    kafka -> notif: consume(TransferCompleted)
+    notif -> sender: Push "Sent 500 SAR to Ahmed"
+    notif -> notif: notifyRecipient()
+    notif --> notif: Push "Received 500 SAR from Mohammed"
+    
+    transfer --> apigw: {status: SUCCESS, reference: TRF123456}
+    apigw --> app: Transfer successful
+    app --> sender: Show success + receipt
+    
+else Risk Score High (>= 70)
+    fraud --> transfer: {riskScore: 85, action: BLOCK}
+    transfer -> db: UPDATE transfer SET status = BLOCKED
+    transfer --> apigw: {error: TRANSFER_BLOCKED, reason: SECURITY}
+    apigw --> app: Transfer blocked
+    app --> sender: Contact support
+end
+
+@enduml

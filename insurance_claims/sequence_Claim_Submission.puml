@@ -1,0 +1,144 @@
+@startuml SEQ_Claim_Submission
+title Motor Insurance Claim Submission - ClaimsPro
+
+actor "Policyholder" as customer
+participant "Mobile App" as app
+participant "API Gateway" as apigw
+participant "FNOL Service" as fnol
+participant "Policy Adapter" as policy
+participant "Vision AI" as vision
+participant "Fraud Detector" as fraud
+participant "Claim Service" as claim
+participant "Workflow Engine" as workflow
+participant "Notification Service" as notif
+database "Claims DB" as db
+entity "Policy System" as polsys
+
+== Initiate FNOL ==
+
+customer -> app: Report accident
+app -> app: Capture location (GPS)
+app -> apigw: POST /api/v1/fnol/initiate
+apigw -> fnol: initiateFNOL(customerId)
+
+fnol -> policy: getPolicies(customerId)
+policy -> polsys: fetchActivePolicies()
+polsys --> policy: {policies: [POL-001, POL-002]}
+policy --> fnol: {motorPolicies: [...]}
+
+fnol --> apigw: {sessionId, policies}
+apigw --> app: Select vehicle
+app --> customer: Choose affected vehicle
+
+== Capture Incident Details ==
+
+customer -> app: Select vehicle (Toyota Camry)
+customer -> app: Enter incident date/time
+customer -> app: Describe incident
+customer -> app: Take photos (4 angles)
+customer -> app: Upload police report (if any)
+
+app -> apigw: POST /api/v1/fnol/submit
+note right
+Payload:
+- policyId: POL-001
+- vehicleId: VH-001
+- incidentDate: 2025-02-15
+- description: "Rear-end collision..."
+- location: {lat, lng}
+- photos: [4 images]
+- policeReport: optional
+end note
+
+apigw -> fnol: submitFNOL(fnolData)
+
+== Validate Policy ==
+
+fnol -> policy: validateCoverage(policyId, incidentDate)
+policy -> polsys: checkPolicyStatus()
+
+alt Policy Active & Covered
+    polsys --> policy: {status: ACTIVE, coverage: COMPREHENSIVE}
+    policy --> fnol: {valid: true, deductible: 500}
+    
+else Policy Expired/Not Covered
+    polsys --> policy: {status: EXPIRED}
+    policy --> fnol: {valid: false, reason: POLICY_EXPIRED}
+    fnol --> apigw: {error: NO_COVERAGE}
+    apigw --> app: Claim cannot be filed
+    app --> customer: Policy not active
+end
+
+== AI Damage Assessment ==
+
+fnol -> vision: analyzeDamage(photos)
+vision -> vision: processImages()
+vision -> vision: detectDamage()
+vision -> vision: classifySeverity()
+
+note right
+AI Assessment:
+- Damage Areas: Rear bumper, trunk
+- Severity: MODERATE
+- Estimated Repair: 8,500 SAR
+- Confidence: 87%
+- Total Loss: NO
+end note
+
+vision --> fnol: {damageAssessment}
+
+== Fraud Screening ==
+
+fnol -> fraud: screenClaim(claimData)
+fraud -> fraud: checkDuplicates()
+fraud -> fraud: analyzePatterns()
+fraud -> fraud: scoreRisk()
+
+alt Low Fraud Risk (Score < 30)
+    fraud --> fnol: {fraudScore: 15, risk: LOW}
+    
+else Medium Risk (30-70)
+    fraud --> fnol: {fraudScore: 55, risk: MEDIUM, flags: [...]}
+    
+else High Risk (> 70)
+    fraud --> fnol: {fraudScore: 85, risk: HIGH}
+    fnol -> db: INSERT claims (SIU_REVIEW)
+    fnol --> apigw: {claimId, status: UNDER_REVIEW}
+    apigw --> app: Claim submitted for review
+    app --> customer: We'll contact you shortly
+end
+
+== Create Claim ==
+
+fnol -> claim: createClaim(fnolData, assessment)
+claim -> db: INSERT claims
+claim -> db: INSERT claim_documents
+claim -> db: INSERT damage_assessment
+db --> claim: {claimId: CLM-2025-001}
+
+claim -> workflow: initiateWorkflow(claimId)
+workflow -> workflow: determineRoute()
+
+note right
+Routing Decision:
+- Damage < 5000: Auto-adjudicate
+- Damage 5000-20000: Adjuster review
+- Damage > 20000: Senior adjuster
+- Fraud flag: SIU team
+Result: ADJUSTER_REVIEW
+end note
+
+workflow --> claim: {workflowId, assignedTo: ADJ-005}
+
+== Notify ==
+
+claim -> notif: sendClaimConfirmation(claim)
+notif -> customer: SMS "Claim CLM-2025-001 received"
+notif -> customer: Email with claim details
+notif -> notif: notifyAdjuster(ADJ-005)
+
+claim --> apigw: {claimId: CLM-2025-001, status: SUBMITTED}
+apigw --> app: Claim submitted
+app --> customer: Claim #CLM-2025-001\nEstimated: 3-5 days
+
+@enduml

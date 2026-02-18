@@ -1,0 +1,66 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Awaiting Elm Verification" as AwaitingElmVerification
+state "Awaiting OTP Verification" as AwaitingOtpVerification
+state "Awaiting Sanctions Screening Result" as AwaitingSanctionsScreeningResult
+state "Elm Verification Failed" as ElmVerificationFailed
+state "Elm Verification Succeeded" as ElmVerificationSucceeded
+state "KYC Approved" as KycApproved
+state "KYC Personal Information Received" as KycPersonalInformationReceived
+state "KYC Rejected" as KycRejected
+state "KYC Under Manual Review" as KycUnderManualReview
+state "National ID Document Uploaded" as NationalIdDocumentUploaded
+state "National ID Verification In Progress" as NationalIdVerificationInProgress
+state "Registration Initiated" as RegistrationInitiated
+state "Registration Successful" as RegistrationSuccessful
+state "Sanctions Screening In Progress" as SanctionsScreeningInProgress
+state "Wallet Activated" as WalletActivated
+
+[*] --> RegistrationInitiated
+
+RegistrationInitiated --> AwaitingOtpVerification : OTP Sent
+
+AwaitingOtpVerification --> RegistrationSuccessful : OTP Verified [OTP Valid]
+AwaitingOtpVerification --> AwaitingOtpVerification : OTP Verification Failed [OTP Invalid]
+
+RegistrationSuccessful --> KycPersonalInformationReceived : Personal Information Submitted
+
+KycPersonalInformationReceived --> NationalIdDocumentUploaded : National ID Document Submitted
+
+NationalIdDocumentUploaded --> NationalIdVerificationInProgress : Verification Requested
+
+state NationalIdVerificationInProgress {
+  [*] --> AwaitingElmVerification
+  AwaitingElmVerification --> ElmVerificationFailed : Elm Verification Result [Verification Failed]
+  AwaitingElmVerification --> ElmVerificationSucceeded : Elm Verification Result [Verification Succeeded]
+}
+
+NationalIdVerificationInProgress --> KycRejected : ElmVerificationFailed
+KycRejected --> [*]
+
+NationalIdVerificationInProgress --> SanctionsScreeningInProgress : ElmVerificationSucceeded
+
+state SanctionsScreeningInProgress {
+  [*] --> AwaitingSanctionsScreeningResult
+  AwaitingSanctionsScreeningResult --> KycApproved : Sanctions Screening Result [No Match]
+  AwaitingSanctionsScreeningResult --> KycUnderManualReview : Sanctions Screening Result [Potential Match Found]
+}
+
+SanctionsScreeningInProgress --> KycApproved : KycApproved
+SanctionsScreeningInProgress --> KycUnderManualReview : Under Manual Review
+
+KycApproved --> WalletActivated : Wallet Activation
+WalletActivated --> [*]
+
+KycUnderManualReview --> [*]
+
+@enduml

@@ -1,0 +1,163 @@
+@startuml SEQ_Loan_Disbursement
+title Personal Loan Disbursement - CoreBank
+
+actor "Customer" as customer
+actor "Credit Officer" as officer
+participant "Internet Banking" as web
+participant "API Gateway" as apigw
+participant "Lending Service" as lending
+participant "Account Service" as account
+participant "Workflow Engine" as workflow
+participant "Document Service" as doc
+participant "GL Service" as gl
+participant "Notification Service" as notif
+database "Lending DB" as loandb
+database "Account DB" as acctdb
+
+== Loan Application ==
+
+customer -> web: Apply for personal loan
+customer -> web: Enter loan amount (100,000 SAR)
+customer -> web: Select tenure (36 months)
+
+web -> apigw: POST /api/v1/loans/apply
+apigw -> lending: createApplication(loanRequest)
+
+lending -> lending: calculateEligibility()
+
+note right
+Eligibility Check:
+- Salary: 15,000 SAR
+- Existing EMI: 2,000 SAR
+- DBR Limit: 45%
+- Max EMI: 4,750 SAR
+- Requested EMI: 3,500 SAR
+Status: ELIGIBLE
+end note
+
+lending -> lending: calculateEMI(100000, 36, 15%)
+
+note right
+EMI Calculation:
+- Principal: 100,000 SAR
+- Rate: 15% p.a.
+- Tenure: 36 months
+- EMI: 3,467 SAR
+- Total Interest: 24,812 SAR
+- Total Payment: 124,812 SAR
+end note
+
+lending -> loandb: INSERT loan_applications
+loandb --> lending: {applicationId: LA-001}
+
+lending --> apigw: {applicationId, emi: 3467, rate: 15%}
+apigw --> web: Application submitted
+web --> customer: Application LA-001 received
+
+== Credit Assessment ==
+
+lending -> workflow: initiateApproval(applicationId)
+workflow -> officer: Assign for assessment
+
+officer -> workflow: Fetch application
+workflow -> lending: getApplication(LA-001)
+lending --> workflow: {application details}
+workflow --> officer: Display application
+
+officer -> officer: Review documents
+officer -> officer: Verify income
+officer -> officer: Check credit bureau
+
+officer -> workflow: submitDecision(APPROVED, conditions)
+
+workflow -> lending: updateApplication(APPROVED)
+lending -> loandb: UPDATE loan_applications SET status = APPROVED
+
+lending -> notif: sendApprovalNotification(customerId)
+notif -> customer: SMS "Loan approved! Login to accept"
+
+== Loan Acceptance ==
+
+customer -> web: View approved loan
+web -> apigw: GET /api/v1/loans/LA-001
+apigw -> lending: getApprovedLoan(LA-001)
+lending --> apigw: {loan details, terms}
+apigw --> web: Display loan offer
+web --> customer: Accept loan terms?
+
+customer -> web: Accept terms (OTP verification)
+web -> apigw: POST /api/v1/loans/LA-001/accept
+apigw -> lending: acceptLoan(LA-001, otp)
+
+lending -> lending: verifyOTP()
+lending -> loandb: UPDATE status = ACCEPTED
+
+== Loan Account Creation ==
+
+lending -> lending: createLoanAccount()
+lending -> loandb: INSERT loan_accounts
+
+note right
+Loan Account:
+- Loan ID: LN-001
+- Principal: 100,000
+- Rate: 15%
+- EMI: 3,467
+- Start Date: 2025-03-01
+- Maturity: 2028-02-28
+end note
+
+lending -> lending: generateRepaymentSchedule()
+lending -> loandb: INSERT repayment_schedule (36 rows)
+
+== Disbursement ==
+
+lending -> account: getCustomerAccount(customerId)
+account -> acctdb: SELECT primary_account
+acctdb --> account: {accountId: ACC-001}
+account --> lending: {disbursementAccount: ACC-001}
+
+lending -> account: credit(ACC-001, 100000)
+account -> acctdb: BEGIN TRANSACTION
+account -> acctdb: UPDATE accounts SET balance = balance + 100000
+account -> acctdb: INSERT transactions (CREDIT, LOAN_DISBURSEMENT)
+acctdb --> account: {newBalance: 150000}
+account --> lending: {credited: true}
+
+== GL Posting ==
+
+lending -> gl: postDisbursement(loanId, amount)
+
+note right
+GL Entries:
+DR: Loan Receivables   100,000
+CR: Customer Account   100,000
+
+DR: Unearned Interest  24,812
+CR: Deferred Income    24,812
+end note
+
+gl --> lending: {journalId: JE-100}
+
+lending -> loandb: UPDATE loan_accounts SET status = DISBURSED
+lending -> loandb: COMMIT
+
+== Documentation ==
+
+lending -> doc: generateLoanKit(loanId)
+doc -> doc: createSanctionLetter()
+doc -> doc: createRepaymentSchedule()
+doc -> doc: createLoanAgreement()
+doc --> lending: {documents: [...]}
+
+== Notifications ==
+
+lending -> notif: sendDisbursementNotification(loan)
+notif -> customer: SMS "100,000 SAR credited to your account"
+notif -> customer: Email with loan documents
+
+lending --> apigw: {status: DISBURSED, loanId: LN-001}
+apigw --> web: Loan disbursed
+web --> customer: Congratulations! Loan credited
+
+@enduml

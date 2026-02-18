@@ -1,0 +1,75 @@
+@startuml
+skinparam shadowing false
+skinparam state {
+  BackgroundColor white
+  BorderColor #1F4FD8
+  FontColor black
+  FontStyle plain
+}
+skinparam ArrowColor #1F4FD8
+skinparam ArrowFontColor #0B5394
+
+state "Awaiting Sender Confirmation" as AwaitingSenderConfirmation
+state "Balance Check In Progress" as BalanceCheckInProgress
+state "Crediting Recipient Wallet" as CreditingRecipientWallet
+state "Debiting Sender Wallet" as DebitingSenderWallet
+state "Insufficient Balance" as InsufficientBalance
+state "Notification In Progress" as NotificationInProgress
+state "Recipient Found" as RecipientFound
+state "Recipient Lookup In Progress" as RecipientLookupInProgress
+state "Recipient Not Found" as RecipientNotFound
+state "Risk Assessment In Progress" as RiskAssessmentInProgress
+state "Risk Score Acceptable" as RiskScoreAcceptable
+state "Sufficient Balance Available" as SufficientBalanceAvailable
+state "Transfer Blocked Due To Risk" as TransferBlockedDueToRisk
+state "Transfer Completed" as TransferCompleted
+state "Transfer Execution Completed" as TransferExecutionCompleted
+state "Transfer Execution In Progress" as TransferExecutionInProgress
+state "Transfer Failed" as TransferFailed
+state "Transfer Initiated" as TransferInitiated
+state "Transfer Persisted" as TransferPersisted
+state "Transfer Successful" as TransferSuccessful
+
+[*] --> TransferInitiated
+
+TransferInitiated --> RecipientLookupInProgress : Initiate transfer
+RecipientLookupInProgress --> RecipientFound : Recipient found
+RecipientLookupInProgress --> RecipientNotFound : Recipient not found
+
+RecipientNotFound --> TransferFailed : Recipient not registered
+
+RecipientFound --> BalanceCheckInProgress : Check sender balance
+BalanceCheckInProgress --> SufficientBalanceAvailable : Sufficient balance
+BalanceCheckInProgress --> InsufficientBalance : Insufficient balance
+
+InsufficientBalance --> TransferFailed : Insufficient balance
+
+SufficientBalanceAvailable --> AwaitingSenderConfirmation : Show confirmation
+
+AwaitingSenderConfirmation --> RiskAssessmentInProgress : Sender confirms transfer
+
+RiskAssessmentInProgress --> RiskScoreAcceptable : Risk score < 70
+RiskAssessmentInProgress --> TransferBlockedDueToRisk : Risk score >= 70
+
+RiskScoreAcceptable --> TransferExecutionInProgress : Approve transfer
+
+state TransferExecutionInProgress {
+  [*] --> DebitingSenderWallet
+  DebitingSenderWallet --> CreditingRecipientWallet : Debit successful
+  CreditingRecipientWallet --> TransferPersisted : Credit successful
+  TransferPersisted --> TransferExecutionCompleted : Commit transaction
+}
+
+TransferExecutionInProgress --> TransferCompleted : TransferExecutionCompleted
+
+TransferCompleted --> NotificationInProgress : Publish transfer completed
+
+NotificationInProgress --> TransferSuccessful : Notifications sent
+
+TransferSuccessful --> [*]
+
+TransferBlockedDueToRisk --> TransferFailed : Transfer blocked
+
+TransferFailed --> [*]
+
+@enduml

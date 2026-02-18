@@ -1,0 +1,77 @@
+@startuml C4_ClaimsPro_Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram - ClaimsPro Insurance Claims Platform
+
+Container_Boundary(channels, "Customer Channels") {
+    Component(mobile, "Mobile App", "React Native", "Claim submission, tracking")
+    Component(web, "Web Portal", "React", "Customer self-service")
+    Component(call_center, "Call Center", "Java", "Agent-assisted claims")
+}
+
+Container_Boundary(core, "Claims Core") {
+    Component(fnol_svc, "FNOL Service", "Java/Spring", "First Notice of Loss capture")
+    Component(claim_svc, "Claim Service", "Java/Spring", "Claim lifecycle management")
+    Component(assess_svc, "Assessment Service", "Java/Spring", "Damage assessment coordination")
+    Component(adjud_svc, "Adjudication Engine", "Java/Drools", "Rules-based claim decision")
+    Component(settle_svc, "Settlement Service", "Java/Spring", "Payment processing")
+    Component(doc_svc, "Document Service", "Java/Spring", "Document generation")
+}
+
+Container_Boundary(ai, "AI Services") {
+    Component(vision_ai, "Vision AI", "Python/TensorFlow", "Image damage analysis")
+    Component(estimate_ai, "Cost Estimator", "Python/ML", "Repair cost prediction")
+    Component(fraud_ai, "Fraud Detector", "Python/ML", "Fraud scoring")
+}
+
+Container_Boundary(workflow, "Workflow & Assignment") {
+    Component(workflow_engine, "Workflow Engine", "Camunda", "Claim process orchestration")
+    Component(assignment, "Assignment Service", "Java", "Adjuster workload balancing")
+    Component(surveyor_svc, "Surveyor Service", "Java", "Field inspection management")
+}
+
+Container_Boundary(integration, "Integration Layer") {
+    Component(policy_adapter, "Policy Adapter", "Java", "Policy system integration")
+    Component(payment_adapter, "Payment Adapter", "Java", "Bank/payment integration")
+    Component(garage_adapter, "Garage Network", "Java", "Repair shop integration")
+    Component(fraud_adapter, "Fraud Bureau", "Java", "Industry fraud database")
+}
+
+Container_Boundary(data, "Data Layer") {
+    ComponentDb(claims_db, "Claims DB", "PostgreSQL", "Claims data")
+    ComponentDb(docs_store, "Document Store", "S3", "Photos, documents")
+    ComponentQueue(event_bus, "Event Bus", "Kafka", "Claim events")
+}
+
+Container_Boundary(external, "External Systems") {
+    System_Ext(policy_sys, "Policy Admin", "Policy data")
+    System_Ext(bank, "Bank", "Payments")
+    System_Ext(garages, "Repair Network", "Workshops")
+    System_Ext(fraud_db, "Fraud Database", "Industry data")
+}
+
+' Connections
+mobile --> fnol_svc
+web --> claim_svc
+fnol_svc --> claim_svc
+claim_svc --> assess_svc
+assess_svc --> vision_ai
+assess_svc --> estimate_ai
+claim_svc --> adjud_svc
+claim_svc --> fraud_ai
+adjud_svc --> settle_svc
+settle_svc --> payment_adapter
+payment_adapter --> bank
+claim_svc --> policy_adapter
+policy_adapter --> policy_sys
+claim_svc --> workflow_engine
+workflow_engine --> assignment
+fraud_ai --> fraud_adapter
+fraud_adapter --> fraud_db
+settle_svc --> garage_adapter
+garage_adapter --> garages
+claim_svc --> claims_db
+fnol_svc --> docs_store
+claim_svc --> event_bus
+
+@enduml

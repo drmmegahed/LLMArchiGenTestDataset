@@ -1,0 +1,94 @@
+@startuml C4_MediCare_Components
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+title Component Diagram - MediCare EHR System
+
+Container_Boundary(users, "User Interfaces") {
+    Component(physician_app, "Physician Portal", "React", "Clinical documentation")
+    Component(nurse_app, "Nurse Station", "React", "Patient care")
+    Component(patient_portal, "Patient Portal", "React", "Patient access")
+    Component(admin_app, "Admin Console", "React", "System administration")
+}
+
+Container_Boundary(api, "API Layer") {
+    Component(api_gw, "API Gateway", "Kong", "Security, routing")
+    Component(fhir_api, "FHIR API", "HAPI FHIR", "HL7 FHIR R4 endpoints")
+}
+
+Container_Boundary(clinical, "Clinical Services") {
+    Component(patient_svc, "Patient Service", "Java", "Patient demographics")
+    Component(encounter_svc, "Encounter Service", "Java", "Visits, admissions")
+    Component(clinical_svc, "Clinical Doc Service", "Java", "Notes, assessments")
+    Component(problem_svc, "Problem List Service", "Java", "Diagnoses, conditions")
+    Component(allergy_svc, "Allergy Service", "Java", "Allergies, reactions")
+    Component(vitals_svc, "Vitals Service", "Java", "Vital signs")
+}
+
+Container_Boundary(orders, "Order Services") {
+    Component(order_svc, "Order Service", "Java", "Order management")
+    Component(lab_svc, "Lab Service", "Java", "Laboratory orders")
+    Component(rad_svc, "Radiology Service", "Java", "Imaging orders")
+    Component(rx_svc, "Prescription Service", "Java", "Medications")
+    Component(cdss, "CDSS Engine", "Python", "Clinical decision support")
+}
+
+Container_Boundary(scheduling, "Scheduling") {
+    Component(schedule_svc, "Scheduling Service", "Java", "Appointments")
+    Component(resource_svc, "Resource Service", "Java", "Providers, rooms")
+    Component(reminder_svc, "Reminder Service", "Java", "Notifications")
+}
+
+Container_Boundary(integration, "Integration Hub") {
+    Component(lis_adapter, "LIS Adapter", "Java", "Lab system integration")
+    Component(ris_adapter, "RIS Adapter", "Java", "Radiology integration")
+    Component(pharmacy_adapter, "Pharmacy Adapter", "Java", "Pharmacy integration")
+    Component(insurance_adapter, "Insurance Adapter", "Java", "Payer integration")
+}
+
+Container_Boundary(data, "Data Layer") {
+    ComponentDb(patient_db, "Patient DB", "PostgreSQL", "Patient records")
+    ComponentDb(clinical_db, "Clinical DB", "PostgreSQL", "Clinical data")
+    ComponentDb(order_db, "Order DB", "PostgreSQL", "Orders, results")
+    ComponentQueue(hl7_queue, "HL7 Queue", "RabbitMQ", "HL7 messages")
+}
+
+Container_Boundary(external, "External Systems") {
+    System_Ext(lis, "Laboratory System", "Lab orders/results")
+    System_Ext(ris, "Radiology System", "Imaging")
+    System_Ext(pharmacy, "Pharmacy System", "Prescriptions")
+    System_Ext(insurance, "Insurance", "Eligibility")
+}
+
+' Connections
+physician_app --> api_gw
+nurse_app --> api_gw
+patient_portal --> api_gw
+api_gw --> fhir_api
+fhir_api --> patient_svc
+fhir_api --> encounter_svc
+fhir_api --> clinical_svc
+fhir_api --> order_svc
+
+clinical_svc --> problem_svc
+clinical_svc --> allergy_svc
+encounter_svc --> vitals_svc
+
+order_svc --> lab_svc
+order_svc --> rad_svc
+order_svc --> rx_svc
+rx_svc --> cdss
+rx_svc --> allergy_svc
+
+lab_svc --> lis_adapter
+rad_svc --> ris_adapter
+rx_svc --> pharmacy_adapter
+lis_adapter --> lis
+ris_adapter --> ris
+pharmacy_adapter --> pharmacy
+
+patient_svc --> patient_db
+clinical_svc --> clinical_db
+order_svc --> order_db
+lis_adapter --> hl7_queue
+
+@enduml

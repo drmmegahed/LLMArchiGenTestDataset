@@ -1,0 +1,78 @@
+@startuml SEQ_Prescription
+title Electronic Prescription (e-Prescribing) - MediCare EHR
+
+actor "Physician" as doctor
+actor "Patient" as patient
+participant "Physician Portal" as portal
+participant "Prescription Service" as rx
+participant "Allergy Service" as allergy
+participant "CDSS Engine" as cdss
+participant "Pharmacy Adapter" as pharma_adapter
+participant "Notification Service" as notif
+database "Clinical DB" as db
+entity "Pharmacy System" as pharmacy
+
+== Prescribe Medication ==
+
+doctor -> portal: New prescription
+doctor -> portal: Search medication "Lisinopril"
+portal -> rx: searchMedications("Lisinopril")
+rx --> portal: {medications: [Lisinopril 10mg, 20mg, 40mg]}
+
+doctor -> portal: Select Lisinopril 10mg
+doctor -> portal: Enter dosage: 1 tablet daily
+
+portal -> rx: createPrescription(rxData)
+
+note right
+Prescription:
+- Drug: Lisinopril 10mg
+- Sig: 1 tablet daily
+- Quantity: 30 tablets
+- Refills: 2
+end note
+
+== Safety Checks ==
+
+rx -> allergy: checkAllergies(patientId, drugId)
+allergy -> db: SELECT allergies
+db --> allergy: {allergies: [Penicillin]}
+allergy --> rx: {safe: true}
+
+rx -> cdss: checkDrugInteractions(patientId, newDrug)
+cdss -> db: SELECT active_medications
+cdss -> cdss: evaluateInteractions()
+
+alt Interaction Found
+    cdss --> rx: {interaction: MODERATE}
+    rx --> portal: {warning: INTERACTION}
+    portal --> doctor: Moderate interaction detected
+    doctor -> portal: Acknowledge and continue
+else No Interactions
+    cdss --> rx: {safe: true}
+end
+
+rx -> db: INSERT prescriptions
+db --> rx: {rxId: RX-2025-001}
+
+== Send to Pharmacy ==
+
+doctor -> portal: Sign and send
+portal -> rx: signAndSend(rxId)
+rx -> pharma_adapter: transmitPrescription(rxData)
+pharma_adapter -> pharmacy: NCPDP NewRx
+
+alt Pharmacy Accepts
+    pharmacy --> pharma_adapter: {accepted}
+    pharma_adapter --> rx: {transmitted}
+    rx -> notif: sendRxNotification(patientId)
+    notif -> patient: SMS "Prescription sent to pharmacy"
+    rx --> portal: Prescription sent
+    
+else Pharmacy Rejects
+    pharmacy --> pharma_adapter: {rejected, reason}
+    rx --> portal: {error: REJECTED}
+    portal --> doctor: Select another pharmacy
+end
+
+@enduml

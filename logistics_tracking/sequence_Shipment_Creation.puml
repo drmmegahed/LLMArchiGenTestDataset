@@ -1,0 +1,96 @@
+@startuml SEQ_Shipment_Creation
+title Shipment Creation and Dispatch - TrackIt
+
+actor "Shipper" as shipper
+participant "Shipper Portal" as portal
+participant "Shipment Service" as shipment
+participant "Rate Service" as rate
+participant "Routing Service" as routing
+participant "Maps Adapter" as maps
+participant "WMS Adapter" as wms
+participant "Driver Service" as driver
+participant "Notification Service" as notif
+database "Shipment DB" as db
+entity "Google Maps" as google
+entity "Warehouse" as warehouse
+
+== Create Shipment ==
+
+shipper -> portal: Create new shipment
+shipper -> portal: Enter pickup address
+shipper -> portal: Enter delivery address
+shipper -> portal: Enter package details
+
+portal -> shipment: createShipment(shipmentData)
+
+shipment -> maps: validateAddresses(pickup, delivery)
+maps -> google: Geocoding API
+google --> maps: {coordinates, validated}
+maps --> shipment: {validAddresses}
+
+== Calculate Rate ==
+
+shipment -> rate: calculateRate(shipmentData)
+rate -> routing: estimateDistance(pickup, delivery)
+routing -> maps: getDistance()
+maps -> google: Distance Matrix API
+google --> maps: {distance: 45km, duration: 55min}
+maps --> routing: {distance, duration}
+routing --> rate: {distance, eta}
+
+rate -> rate: applyPricing()
+
+note right
+Rate Calculation:
+- Base Rate: 20 SAR
+- Distance (45km x 0.5): 22.5 SAR
+- Weight Surcharge: 5 SAR
+- Total: 47.5 SAR
+- ETA: 2-3 hours
+end note
+
+rate --> shipment: {rate: 47.5, eta: "2-3 hours"}
+shipment --> portal: {quote}
+portal --> shipper: Shipping cost: 47.5 SAR
+
+== Confirm Shipment ==
+
+shipper -> portal: Confirm shipment
+portal -> shipment: confirmShipment(shipmentId)
+
+shipment -> shipment: generateAWB()
+shipment -> db: INSERT shipments (CONFIRMED)
+db --> shipment: {awb: AWB-2025-001234}
+
+== Dispatch to Warehouse ==
+
+shipment -> wms: createPickupRequest(shipmentData)
+wms -> warehouse: Pickup order
+warehouse --> wms: {acknowledged}
+wms --> shipment: {pickupScheduled}
+
+== Assign Driver ==
+
+shipment -> driver: findAvailableDriver(zone)
+driver -> db: SELECT drivers WHERE zone = ? AND available = true
+db --> driver: {drivers: [D-001, D-002]}
+
+driver -> routing: optimizeAssignment(drivers, shipments)
+routing --> driver: {bestMatch: D-001}
+
+driver -> db: UPDATE drivers SET assigned_shipment = AWB-001
+driver -> notif: notifyDriver(D-001, shipmentDetails)
+notif -> notif: Push to driver app
+
+driver --> shipment: {assigned: D-001}
+
+== Notify Shipper ==
+
+shipment -> notif: sendConfirmation(shipper, awb)
+notif -> shipper: SMS "Shipment AWB-2025-001234 confirmed"
+notif -> shipper: Email with tracking link
+
+shipment --> portal: {awb, trackingUrl, eta}
+portal --> shipper: Shipment created successfully
+
+@enduml

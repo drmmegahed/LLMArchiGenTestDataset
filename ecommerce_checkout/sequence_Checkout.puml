@@ -1,0 +1,131 @@
+@startuml SEQ_Checkout
+title E-Commerce Checkout Flow - ShopEase
+
+actor "Customer" as customer
+participant "Web Store" as web
+participant "Cart Service" as cart
+participant "Inventory Service" as inventory
+participant "Pricing Service" as pricing
+participant "Checkout Service" as checkout
+participant "Payment Service" as payment
+participant "Order Service" as order
+participant "Fulfillment Service" as fulfill
+participant "Notification Service" as notif
+database "Order DB" as db
+entity "Payment Gateway" as gateway
+
+== View Cart ==
+
+customer -> web: View cart
+web -> cart: getCart(sessionId)
+cart --> web: {items: [{sku, qty, price}...], total}
+web --> customer: Display cart (3 items, 450 SAR)
+
+== Initiate Checkout ==
+
+customer -> web: Proceed to checkout
+web -> checkout: initiateCheckout(cartId)
+
+checkout -> cart: getCartDetails(cartId)
+cart --> checkout: {items, customerId}
+
+checkout -> inventory: reserveItems(items)
+
+loop For Each Item
+    inventory -> inventory: checkAvailability(sku, qty)
+    inventory -> inventory: createReservation(sku, qty, 15min)
+end
+
+alt All Items Available
+    inventory --> checkout: {reserved: true, reservationId}
+else Some Items Unavailable
+    inventory --> checkout: {reserved: false, unavailable: [SKU-003]}
+    checkout --> web: Some items out of stock
+    web --> customer: Remove unavailable items?
+end
+
+checkout -> pricing: calculateTotal(items, customerId)
+pricing -> pricing: applyDiscounts()
+pricing -> pricing: calculateTax()
+pricing -> pricing: calculateShipping()
+
+note right
+Price Breakdown:
+- Subtotal: 450 SAR
+- Discount (10%): -45 SAR
+- Tax (15%): 60.75 SAR
+- Shipping: 25 SAR
+- Total: 490.75 SAR
+end note
+
+pricing --> checkout: {breakdown, total: 490.75}
+checkout --> web: {checkoutId, summary}
+web --> customer: Review order
+
+== Enter Shipping Address ==
+
+customer -> web: Enter shipping address
+web -> checkout: setShippingAddress(checkoutId, address)
+checkout -> checkout: validateAddress()
+checkout --> web: {validated}
+
+== Payment ==
+
+customer -> web: Select payment (Credit Card)
+customer -> web: Enter card details
+web -> checkout: submitPayment(checkoutId, cardData)
+
+checkout -> payment: processPayment(amount, cardData)
+payment -> gateway: authorize(card, 490.75)
+
+alt Payment Authorized
+    gateway --> payment: {authorized, authCode: ABC123}
+    payment --> checkout: {success, paymentId}
+    
+    == Create Order ==
+    
+    checkout -> order: createOrder(checkoutId)
+    order -> db: INSERT orders
+    order -> db: INSERT order_items
+    db --> order: {orderId: ORD-2025-001}
+    
+    order -> inventory: confirmReservation(reservationId)
+    inventory -> inventory: deductStock()
+    inventory --> order: {confirmed}
+    
+    order -> cart: clearCart(cartId)
+    
+    == Capture Payment ==
+    
+    order -> payment: capturePayment(paymentId)
+    payment -> gateway: capture(authCode)
+    gateway --> payment: {captured}
+    payment --> order: {captured}
+    
+    order -> db: UPDATE orders SET status = PAID
+    
+    == Initiate Fulfillment ==
+    
+    order -> fulfill: createFulfillment(orderId)
+    fulfill --> order: {fulfillmentId, eta: 3-5 days}
+    
+    == Notify Customer ==
+    
+    order -> notif: sendOrderConfirmation(order)
+    notif -> customer: Email "Order confirmed #ORD-2025-001"
+    notif -> customer: SMS "Order placed successfully"
+    
+    checkout --> web: {orderId, status: CONFIRMED}
+    web --> customer: Order confirmed! #ORD-2025-001
+    
+else Payment Declined
+    gateway --> payment: {declined, reason: INSUFFICIENT_FUNDS}
+    payment --> checkout: {failed, reason}
+    
+    checkout -> inventory: releaseReservation(reservationId)
+    
+    checkout --> web: {error: PAYMENT_FAILED}
+    web --> customer: Payment declined, try another card
+end
+
+@enduml
